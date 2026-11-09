@@ -123,3 +123,82 @@ def test_dev_slices_fit_every_variant(variant):
     assert [s.name for s in slices] == ["reviews", "products", "registration"]
     assert [s.truncated for s in slices] == [[], [], []]
     assert all(s.flows and all(f.middleware_complete for f in s.flows) for s in slices)
+
+
+RULES_YML = """- rule_id: R1
+  title: 수정은 소유자만
+  requirement_quote: 사용자는 자신이 작성한 리뷰만 수정할 수 있다.
+  doc_ref: reviews.md#7
+  category: 2
+  cwe: CWE-639
+  applies_to: ["GET /a"]
+  status: approved
+- rule_id: R2
+  title: 승인 안 됨
+  requirement_quote: 무시
+  applies_to: ["GET /a"]
+  status: pending
+"""
+ABSENT = {"claim": "absent", "statement": "s", "cwe": "CWE-862", "category": 2, "root_symbol": "A.b",
+          "expected_positions": ["A.b"], "basis": ["x"],
+          "hops": [{"file": "A.java", "start": 1, "end": 1, "quote": "class A {}", "role": "root_control"}]}
+INVENTED = {**ABSENT, "statement": "지어낸 인용", "root_symbol": "A.c",
+            "hops": [{"file": "A.java", "start": 1, "end": 1, "quote": "없는 코드", "role": "root_control"}]}
+
+
+def _rules_file(target):
+    path = target / "rules.yml"
+    path.write_text(RULES_YML, encoding="utf-8")
+    return path
+
+
+def test_condition_d_uses_rules_from_design_only(fake, target, tmp_path):
+    fake.responses += [{"match": "lens_id별로", "content": '{"claims": []}'},
+                       {"content": json.dumps({"claims": [CLAIM]})}]
+    slices = target / "s.yml"
+    slices.write_text("- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a}]\n")
+    record = run_condition("D", target, tmp_path / "o", config=make_config(fake), conditions=CONDITIONS, repeat=1,
+                           slices_file=slices, rules_file=_rules_file(target))
+    sent = [json.dumps(r["messages"], ensure_ascii=False) for r in fake.requests]
+    assert record["status"] == "ok" and len(sent) == 2 and record["claims"] == 1
+    assert any("사용자는 자신이 작성한 리뷰만 수정할 수 있다." in t for t in sent)
+    assert not any("승인 안 됨" in t for t in sent)
+    assert not any("ground-truth" in t for t in sent)
+    assert (tmp_path / "o" / "r1.sarif").exists()
+
+
+def test_condition_e_applies_evidence_and_review(fake, target, tmp_path):
+    fake.responses += [
+        {"match": "재검토한다", "content": '{"result": "kept", "reason": "없다"}'},
+        {"match": "수정 방법을 제안한다", "content": '{"location": "l", "code_example": "c", "check_scenario": "s"}'},
+        {"match": "lens_id별로", "content": '{"claims": []}'},
+        {"match": "조사 항목 하나를", "content": json.dumps({"claims": [ABSENT, INVENTED]})},
+    ]
+    slices = target / "s.yml"
+    slices.write_text("- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a, middleware_complete: true}]\n")
+    record = run_condition("E", target, tmp_path / "o", config=make_config(fake), conditions=CONDITIONS, repeat=1,
+                           slices_file=slices, rules_file=_rules_file(target), design=[])
+    results = json.loads((tmp_path / "o" / "r1.sarif").read_text())["runs"][0]["results"]
+    assert [r["message"]["text"] for r in results] == ["s"] and record["verdicts"]["missing_suspected"] == 1
+    assert record["verdicts"]["unverified"] == 1 and record["calls"] >= 3
+
+
+def test_condition_e_failure_is_not_zero_findings(fake, target, tmp_path):
+    slices = target / "s.yml"
+    slices.write_text("- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a, middleware_complete: true}]\n")
+    record = run_condition("E", target, tmp_path / "o", config=make_config(fake), conditions=CONDITIONS, repeat=1,
+                           slices_file=slices, rules_file=_rules_file(target), design=[])
+    assert record["status"] == "failed" and not (tmp_path / "o" / "r1.sarif").exists()
+
+
+@needs_bench
+def test_dev_rules_match_dev_flows():
+    from agent.steps.cases import load_rules
+
+    rules_file = Path(__file__).resolve().parents[1] / "eval" / "rules" / "dev.yml"
+    if not rules_file.exists():
+        pytest.skip("eval/rules/dev.yml을 아직 만들지 않음")
+    snapshot = scan_scope(BENCH / "artifacts" / "DEV-D0" / "scan-input")
+    rules = load_rules(rules_file)
+    cases = build_cases(load_slices(DEV_SLICES, snapshot), rules, Budget())
+    assert rules and {r.rule_id for r in rules} == {c.subject_id for c in cases}

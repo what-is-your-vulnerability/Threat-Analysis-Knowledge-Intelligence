@@ -8,16 +8,27 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 from pathlib import Path
 
 import yaml
 
 from agent.adapters.repo.local import open_target
 from agent.config import load_config
+from agent.core.orchestrator import run_scan
 from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
 from agent.llm.roles import investigate
-from agent.schemas.models import Budget, Case, CaseSource, Slice, SliceFile, make_case_id
-from agent.steps.cases import QUESTION_SUBJECT, build_cases
+from agent.schemas.models import (
+    Budget,
+    Case,
+    CaseSource,
+    LedgerState,
+    Slice,
+    SliceFile,
+    VerdictState,
+    make_case_id,
+)
+from agent.steps.cases import QUESTION_SUBJECT, build_cases, load_rules
 from agent.steps.lenses import load_lenses, render_questions
 from agent.steps.sarif import to_sarif
 from agent.steps.scope import scan_scope
@@ -28,10 +39,10 @@ BENCH = ROOT.parent / "benchmarks" / "control-bench"
 LLM_ERRORS = (LlmCallError, LlmFormatError, BudgetExceeded, SecretLeft)
 
 
-def _ask(case, slice_, snapshot, gateway, record, claims):
+def _ask(case, slice_, snapshot, gateway, record, claims, requirement=None):
     """조사 한 번을 돌려 주장을 모은다. 실패는 0건으로 치지 않고 기록한다."""
     try:
-        result = investigate(case, render_slice(slice_, snapshot), gateway=gateway,
+        result = investigate(case, render_slice(slice_, snapshot), gateway=gateway, requirement=requirement,
                              sent_files=[f.path for f in slice_.files])
     except LLM_ERRORS as e:
         record["errors"].append(f"{slice_.name}: {type(e).__name__}: {e}")
@@ -70,6 +81,28 @@ def _run_c(snapshot, gateway, config, slices_file, record, claims) -> bool:
     return True
 
 
+def _run_d(snapshot, gateway, config, slices_file, rules_file, record, claims) -> bool:
+    """C에 승인된 보안 규칙을 더한다. 근거 확인과 재검토는 하지 않는다."""
+    slices = load_slices(Path(slices_file), snapshot)
+    by_id = {s.slice_id: s for s in slices}
+    rules = {r.rule_id: r for r in load_rules(Path(rules_file))}
+    for case in build_cases(slices, list(rules.values()), config.budget, lenses=load_lenses()):
+        rule = rules.get(case.subject_id)
+        requirement = f"{rule.doc_ref}: {rule.requirement_quote}" if rule and rule.requirement_quote else None
+        _ask(case, by_id[case.slice_id], snapshot, gateway, record, claims, requirement)
+    return True
+
+
+def _run_e(root, run_dir, config, slices_file, rules_file, design, record, claims) -> bool:
+    """전체 구조. 근거 확인과 재검토를 통과해 남은 문제만 결과로 낸다."""
+    result = run_scan(root, design=list(design), out=run_dir, config=config, slices_file=Path(slices_file),
+                      rules=load_rules(Path(rules_file)))
+    record["verdicts"] = dict(Counter(v.state.value for v in result.verdicts))
+    record["errors"] += [c.reason for c in result.ledger if c.state == LedgerState.not_seen]
+    claims.extend(v.evidence for v in result.verdicts if v.state == VerdictState.missing_suspected and v.evidence)
+    return True
+
+
 def _totals(run_dir: Path) -> dict:
     rows = [json.loads(line) for line in (run_dir / "manifest.jsonl").read_text(encoding="utf-8").splitlines()]
     sent = [r for r in rows if r["input_tokens"] or r["output_tokens"]]
@@ -82,7 +115,7 @@ def _totals(run_dir: Path) -> dict:
     }
 
 
-def run_condition(condition, target, out, *, config, conditions, repeat, slices_file=None) -> dict:
+def run_condition(condition, target, out, *, config, conditions, repeat, slices_file=None, rules_file=None, design=()) -> dict:
     """한 회차를 돌려 r<N>.sarif와 r<N>.run.json을 쓴다. 호출이 없었으면 SARIF를 쓰지 않아 0건으로 채점되지 않는다."""
     root = open_target(Path(target), Path(out) / "_target")
     out = Path(out)
@@ -95,8 +128,12 @@ def run_condition(condition, target, out, *, config, conditions, repeat, slices_
     claims: list = []
     if condition == "B":
         called = _run_b(snapshot, gateway, conditions["B"], record, claims)
-    else:
+    elif condition == "C":
         called = _run_c(snapshot, gateway, config, slices_file, record, claims)
+    elif condition == "D":
+        called = _run_d(snapshot, gateway, config, slices_file, rules_file, record, claims)
+    else:
+        called = _run_e(root, run_dir, config, slices_file, rules_file, design, record, claims)
 
     record["claims"] = len(claims)
     record |= _totals(run_dir)
@@ -111,22 +148,25 @@ def run_condition(condition, target, out, *, config, conditions, repeat, slices_
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--condition", choices=["B", "C"], required=True)
+    parser.add_argument("--condition", choices=["B", "C", "D", "E"], required=True)
     parser.add_argument("--variant", required=True)
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--experiment", default="bc")
     parser.add_argument("--target", type=Path)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--slices", type=Path, default=ROOT / "eval" / "slices" / "dev.yml")
+    parser.add_argument("--rules", type=Path, default=ROOT / "eval" / "rules" / "dev.yml")
+    parser.add_argument("--design", type=Path, action="append")
     args = parser.parse_args()
 
     target = args.target or BENCH / "artifacts" / args.variant / "scan-input"
     conditions = yaml.safe_load((ROOT / "eval" / "conditions.yml").read_text(encoding="utf-8"))
     config = load_config(args.config)
     out = ROOT / "eval" / "runs" / args.experiment / args.condition / args.variant
+    design = args.design or sorted((BENCH / "designs" / "dev").glob("*.md"))
     for n in range(1, args.repeat + 1):
         record = run_condition(args.condition, target, out, config=config, conditions=conditions, repeat=n,
-                               slices_file=args.slices)
+                               slices_file=args.slices, rules_file=args.rules, design=design)
         print(f"{args.condition} {args.variant} r{n}: {record['status']} 주장 {record['claims']} "
               f"토큰 {record['input_tokens']}+{record['output_tokens']} {record['seconds']}초")
 
