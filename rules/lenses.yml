@@ -1,0 +1,12 @@
+# 기능 묶음을 읽을 때 묻는 고정 질문. 10차안 표의 8개 범주, 질문 11개다.
+- {lens_id: L1, category: 1, question: "요청 값이 쿼리 문자열에 그대로 붙나요?"}
+- {lens_id: L2a, category: 2, question: "비슷한 API에 있는 검사가 이 API에만 없나요?"}
+- {lens_id: L2b, category: 2, question: "검사한 대상과 실제로 쓰는 대상이 같나요?"}
+- {lens_id: L2c, category: 2, question: "캐시 키와 공유 객체에 사용자나 테넌트 구분이 있나요?"}
+- {lens_id: L3, category: 3, question: "객체를 통째로 응답하거나 다른 곳으로 보내나요?"}
+- {lens_id: L4, category: 4, question: "고객정보 필드를 평문으로 저장하거나, 약한 해시를 쓰거나, 평문으로 보내나요?"}
+- {lens_id: L5, category: 5, question: "요청 본문이 권한이나 가격 필드까지 덮어쓰나요?"}
+- {lens_id: L6a, category: 6, question: "앞 단계에서 승인한 대상과 뒷 단계에서 처리하는 대상이 같나요?"}
+- {lens_id: L6b, category: 6, question: "오류가 나면 허용으로 처리하나요?"}
+- {lens_id: L7, category: 7, question: "비밀값이 소스, 응답, 다른 목적지로 나가나요?"}
+- {lens_id: L8, category: 8, question: "같은 화면의 다른 필드는 이스케이프하는데 이 값만 빠졌나요?"}
