@@ -7,3 +7,5 @@ models:
   investigate: null
   review: null
   fix: null
+# 추론 강도(low, medium, high). 모델이 추론만 하다 한도에 걸리면 낮춘다.
+reasoning_effort: null
