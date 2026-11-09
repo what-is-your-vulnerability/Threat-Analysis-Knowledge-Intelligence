@@ -1,0 +1,14 @@
+{"version": "2.1.0", "runs": [{
+  "tool": {"driver": {"name": "Semgrep OSS", "semanticVersion": "1.183.0", "rules": [
+    {"id": "rules.java-string-concat-sql", "properties": {"tags": ["CWE-89: Improper Neutralization", "security"]}},
+    {"id": "rules.no-cwe", "properties": {"tags": []}}
+  ]}},
+  "invocations": [{"executionSuccessful": true, "toolExecutionNotifications": []}],
+  "results": [
+    {"ruleId": "rules.java-string-concat-sql", "message": {"text": "SQL 문자열을 이어 붙인다."},
+     "locations": [{"physicalLocation": {"artifactLocation": {"uri": "app/UserDao.java"},
+       "region": {"startLine": 10, "snippet": {"text": "statement.executeQuery(x)"}}}}]},
+    {"ruleId": "rules.no-cwe", "message": {"text": "기타"},
+     "locations": [{"physicalLocation": {"artifactLocation": {"uri": "/src/app/A.java"}, "region": {"startLine": 2}}}]}
+  ]
+}]}

@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
+from agent.adapters.scanner.semgrep import SemgrepConfig
 from agent.schemas.models import Budget
 
 # shortcut: 저장소에서 실행할 때의 위치, 패키지로 배포하면 규칙 파일을 wheel에 포함한다.
@@ -24,6 +25,7 @@ class AgentConfig(BaseModel):
     models: dict[str, str | None] = Field(default_factory=lambda: dict.fromkeys(ROLES))
     budget: Budget = Field(default_factory=Budget)
     reasoning_effort: str | None = None
+    semgrep: SemgrepConfig = Field(default_factory=SemgrepConfig)
 
 
 def load_config(path: Path | None) -> AgentConfig:

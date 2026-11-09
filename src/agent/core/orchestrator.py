@@ -9,6 +9,7 @@ from agent.adapters.lang.java_index import build_index
 from agent.adapters.lang.mybatis import parse_mappers
 from agent.adapters.lang.spring import extract_spring
 from agent.adapters.repo.local import check_allowed, open_target
+from agent.adapters.scanner.semgrep import coverage_gaps, run_semgrep
 from agent.config import AgentConfig
 from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
 from agent.llm.roles import investigate, propose_fix, review
@@ -151,6 +152,16 @@ def _auto_slices(snapshot: Snapshot, design, result: RunResult, index, mappers, 
     return build_slices(snapshot, spring.entrypoints, index, mappers, design_docs=design)
 
 
+def _run_scanners(snapshot: Snapshot, config: AgentConfig, out: Path, result: RunResult) -> list:
+    if not config.semgrep.enabled:
+        return []
+    outcome = run_semgrep(snapshot, config.semgrep, out)
+    if outcome.status != Capability.supported:
+        result.ledger.append(LedgerCell(subject="semgrep", target="*", state=LedgerState.not_seen,
+                                        reason="; ".join(outcome.errors) or outcome.status.value))
+    return outcome.alerts
+
+
 def _exit_code(result: RunResult) -> int:
     if any(f.outcome == Outcome.block for f in result.findings):
         return 2
@@ -158,7 +169,7 @@ def _exit_code(result: RunResult) -> int:
     warned = any(f.outcome == Outcome.warn for f in result.findings)
     not_seen = any(c.state == LedgerState.not_seen for c in result.ledger)
     not_fixed = any(i.change != "resolved" for i in result.recheck)
-    nothing_checked = not result.verdicts and not result.ledger
+    nothing_checked = not result.verdicts and not any(c.state == LedgerState.checked for c in result.ledger)
     return 1 if has_problem or warned or not_seen or not_fixed or nothing_checked else 0
 
 
@@ -204,6 +215,7 @@ def run_scan(
         if slices is None:
             return _finish(result, out, 3, "Spring 프로젝트인데 컨트롤러를 찾지 못했습니다.")
     result.slices = slices
+    alerts = [*alerts, *_run_scanners(snapshot, config, out, result)]
     lenses = load_lenses()
     result.cases = cases = build_cases(slices, list(rules), config.budget, lenses=lenses, alerts=alerts)
     slice_by_id = {s.slice_id: s for s in slices}
@@ -228,6 +240,7 @@ def run_scan(
     result.findings = group_findings(result.verdicts, cases, set())
     _add_fixes(result.findings, cases, slices, snapshot, gateway)
     result.findings += pass_through_alerts(alerts, slices)
+    result.ledger += coverage_gaps(config.semgrep.rule_files() if config.semgrep.enabled else [])
 
     _finish(result, out)
     if previous is not None:

@@ -1,0 +1,7 @@
+{"version": "2.1.0", "runs": [{
+  "tool": {"driver": {"name": "Semgrep OSS", "rules": []}},
+  "invocations": [{"executionSuccessful": true, "toolExecutionNotifications": [
+    {"level": "error", "message": {"text": "Invalid rule schema"}}
+  ]}],
+  "results": []
+}]}
