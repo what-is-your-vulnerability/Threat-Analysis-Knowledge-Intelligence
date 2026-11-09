@@ -139,3 +139,12 @@ def test_other_endpoint_uses_its_own_key(fake, tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "real-openai-key")
     monkeypatch.setenv("LLM_API_KEY", "local-key")
     assert _sent_key(fake, tmp_path, "http://127.0.0.1:18080/v1") == "local-key"
+
+
+def test_output_limit_is_reported_without_retry(fake, tmp_path):
+    fake.responses += [{"content": '{"value":', "finish_reason": "length"}, {"content": '{"value": 3}'}]
+    with pytest.raises(LlmFormatError, match="출력 한도"):
+        _call(_gateway(fake, tmp_path), schema=Answer)
+    assert len(fake.requests) == 1
+    entry = json.loads((tmp_path / "manifest.jsonl").read_text().splitlines()[0])
+    assert entry["output_tokens"] == 5 and "출력 한도" in entry["error"]

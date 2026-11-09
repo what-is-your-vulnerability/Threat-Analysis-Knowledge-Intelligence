@@ -42,7 +42,8 @@ def _ask(case, slice_, snapshot, gateway, record, claims):
 
 
 def _run_b(snapshot, gateway, settings, record, claims) -> bool:
-    budget = Budget(max_input_tokens=settings["max_input_tokens"])
+    budget = Budget(max_input_tokens=settings["max_input_tokens"], max_seconds=settings.get("max_seconds", 180),
+                    max_output_tokens=settings.get("max_output_tokens", 6000))
     files = [f.path for f in snapshot.files if Path(f.path).suffix in settings["extensions"]]
     case = Case(case_id=make_case_id(CaseSource.question, QUESTION_SUBJECT, "all"), source=CaseSource.question,
                 subject_id=QUESTION_SUBJECT, question=render_questions(load_lenses()), slice_id="all", budget=budget)
