@@ -323,6 +323,7 @@ class ManifestEntry(BaseModel):
     output_tokens: int = 0
     seconds: float = 0.0
     error: str | None = None
+    messages: list[dict] = Field(default_factory=list)  # 가린 뒤의 프롬프트
 
 
 def _short_hash(*parts: object) -> str:
