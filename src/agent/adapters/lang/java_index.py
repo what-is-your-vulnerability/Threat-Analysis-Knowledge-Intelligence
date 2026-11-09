@@ -120,6 +120,7 @@ class JavaIndex:
         self._by_method: dict[str, JavaMethod] = {}
         self._calls: dict[str, list[CallSite]] = {}
         self._method_names: dict[str, list[JavaMethod]] = {}
+        self.annotation_types: set[str] = set()
         for entry in snapshot.files:
             if entry.language == "java":
                 self._read_file(entry.path)
@@ -139,6 +140,8 @@ class JavaIndex:
         for node in walk(tree.root_node):
             if node.type in TYPE_DECLARATIONS:
                 self._read_class(node, path, package, imports)
+            elif node.type == "annotation_type_declaration":
+                self.annotation_types.add(_text(node.child_by_field_name("name")))
 
     def _read_class(self, node: Node, path: str, package: str, imports: dict[str, str]) -> None:
         kind = node.type.removesuffix("_declaration")
