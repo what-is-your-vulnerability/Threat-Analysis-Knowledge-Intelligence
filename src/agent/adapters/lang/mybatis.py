@@ -27,6 +27,7 @@ class MapperStatement:
     tables: set[str] = field(default_factory=set)
     dollar_params: set[str] = field(default_factory=set)
     hash_params: set[str] = field(default_factory=set)
+    fragments: list[tuple[str, int, int]] = field(default_factory=list)  # 펼친 <sql>의 (파일, 시작, 끝)
 
 
 class MapperIndex(dict):
@@ -43,6 +44,7 @@ class _Block:
     id: str
     start: int
     end: int = 0
+    file: str = ""
     parts: list = field(default_factory=list)  # 글자 또는 ("include", refid)
 
 
@@ -82,7 +84,7 @@ def _parse_file(text: str) -> tuple[str | None, list[_Block]]:
     return namespace[0], blocks
 
 
-def _expand(block: _Block, namespace: str, fragments: dict, errors: list[str], seen: tuple = ()) -> str:
+def _expand(block: _Block, namespace: str, fragments: dict, errors: list[str], used: list, seen: tuple = ()) -> str:
     out = []
     for part in block.parts:
         if isinstance(part, str):
@@ -95,7 +97,9 @@ def _expand(block: _Block, namespace: str, fragments: dict, errors: list[str], s
         elif key not in fragments:
             errors.append(f"{namespace}.{block.id}: include를 찾지 못함 {refid}")
         else:
-            out.append(_expand(fragments[key], key[0], fragments, errors, (*seen, key)))
+            target = fragments[key]
+            used.append((target.file, target.start, target.end))
+            out.append(_expand(target, key[0], fragments, errors, used, (*seen, key)))
     return "".join(out)
 
 
@@ -114,6 +118,7 @@ def parse_mappers(snapshot: Snapshot) -> MapperIndex:
                 index.errors.append(f"{entry.path}: XML을 읽지 못함 ({e})")
             continue
         for block in blocks:
+            block.file = entry.path
             parsed.append((entry.path, namespace, block))
             if block.kind == "sql":
                 fragments[(namespace, block.id)] = block
@@ -121,10 +126,12 @@ def parse_mappers(snapshot: Snapshot) -> MapperIndex:
     for path, namespace, block in parsed:
         if block.kind == "sql":
             continue
-        sql = _expand(block, namespace, fragments, index.errors).strip()
+        used: list[tuple[str, int, int]] = []
+        sql = _expand(block, namespace, fragments, index.errors, used).strip()
         tables = {t.upper() for t in TABLE_RE.findall(sql)} - NOT_TABLES
         index[(namespace, block.id)] = MapperStatement(
             namespace=namespace, id=block.id, kind=block.kind, file=path, start=block.start, end=block.end, sql=sql,
             tables=tables, dollar_params=set(DOLLAR_RE.findall(sql)), hash_params=set(HASH_RE.findall(sql)),
+            fragments=used,
         )
     return index
