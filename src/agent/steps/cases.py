@@ -20,7 +20,6 @@ from agent.schemas.models import (
 )
 from agent.steps.lenses import render_questions
 
-
 QUESTION_SUBJECT = "lenses"
 
 
