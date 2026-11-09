@@ -148,3 +148,23 @@ def test_output_limit_is_reported_without_retry(fake, tmp_path):
     assert len(fake.requests) == 1
     entry = json.loads((tmp_path / "manifest.jsonl").read_text().splitlines()[0])
     assert entry["output_tokens"] == 5 and "출력 한도" in entry["error"]
+
+
+def test_reasoning_runaway_is_retried_once(fake, tmp_path):
+    fake.responses += [{"content": None, "finish_reason": "length"}, {"content": '{"value": 3}'}]
+    assert _call(_gateway(fake, tmp_path), schema=Answer).parsed == Answer(value=3)
+    assert len(fake.requests) == 2
+
+
+def test_reasoning_runaway_twice_is_an_error(fake, tmp_path):
+    fake.responses += [{"content": None, "finish_reason": "length"}, {"content": None, "finish_reason": "length"}]
+    with pytest.raises(LlmFormatError, match="출력 한도"):
+        _call(_gateway(fake, tmp_path), schema=Answer)
+    assert len(fake.requests) == 2
+
+
+def test_reasoning_effort_is_sent_when_set(fake, tmp_path):
+    fake.responses += [{"content": "ok"}, {"content": "ok"}]
+    _call(_gateway(fake, tmp_path, reasoning_effort="medium"))
+    _call(_gateway(fake, tmp_path))
+    assert fake.requests[0]["reasoning_effort"] == "medium" and "reasoning_effort" not in fake.requests[1]

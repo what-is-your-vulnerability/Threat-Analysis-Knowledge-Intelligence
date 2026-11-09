@@ -23,6 +23,7 @@ class AgentConfig(BaseModel):
     base_url: str = "https://api.openai.com/v1"
     models: dict[str, str | None] = Field(default_factory=lambda: dict.fromkeys(ROLES))
     budget: Budget = Field(default_factory=Budget)
+    reasoning_effort: str | None = None
 
 
 def load_config(path: Path | None) -> AgentConfig:
