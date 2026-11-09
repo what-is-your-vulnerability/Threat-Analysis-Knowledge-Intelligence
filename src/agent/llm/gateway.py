@@ -35,7 +35,11 @@ class LlmFormatError(RuntimeError):
 
 
 class OutputLimitExceeded(LlmFormatError):
-    """응답이 출력 한도에서 잘렸다. 같은 한도로 다시 보내도 같으므로 재시도하지 않는다."""
+    """답을 쓰다가 출력 한도에서 잘렸다. 같은 한도로 다시 보내도 같으므로 재시도하지 않는다."""
+
+
+class ReasoningRunaway(LlmFormatError):
+    """추론만 하다 답 없이 한도에 걸렸다. 무작위로 생기므로 한 번 더 보낸다."""
 
 
 class LlmCallError(RuntimeError):
@@ -109,6 +113,8 @@ class LlmGateway:
             raise BudgetExceeded(entry.error)
 
         kwargs: dict = {"model": model, "messages": masked, "max_completion_tokens": budget.max_output_tokens}
+        if self.config.reasoning_effort:
+            kwargs["reasoning_effort"] = self.config.reasoning_effort
         if tools:
             kwargs["tools"] = tools
         if schema:
@@ -155,7 +161,10 @@ class LlmGateway:
         entry.input_tokens += usage.prompt_tokens if usage else 0
         entry.output_tokens += usage.completion_tokens if usage else 0
         if raw.choices[0].finish_reason == "length":
-            raise OutputLimitExceeded(f"출력 한도 {budget.max_output_tokens} 토큰에서 응답이 잘림")
+            limit = f"출력 한도 {budget.max_output_tokens} 토큰"
+            if not raw.choices[0].message.content:
+                raise ReasoningRunaway(f"{limit}에 걸려 답이 비어 있음")
+            raise OutputLimitExceeded(f"{limit}에서 응답이 잘림")
         message = raw.choices[0].message
         tool_calls = [
             {"id": c.id, "name": c.function.name, "arguments": c.function.arguments} for c in message.tool_calls or []
