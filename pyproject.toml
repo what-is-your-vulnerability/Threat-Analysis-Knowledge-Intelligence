@@ -27,6 +27,7 @@ packages = ["src/agent"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
   "docker: 실제 컨테이너가 필요한 시험",
   "postgres: 로컬 PostgreSQL이 필요한 시험",

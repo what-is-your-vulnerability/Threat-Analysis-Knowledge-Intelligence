@@ -1,0 +1,5 @@
+# 평가 조건별 입력. 숫자와 모델은 잠정값이다. B의 한도는 G1에서 고른 모델의 입력 한도에 맞춘다.
+B:
+  extensions: [.ts, .js, .html]
+  server_exclude: [frontend/]
+  max_input_tokens: 100000
