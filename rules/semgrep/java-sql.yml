@@ -1,0 +1,20 @@
+# MyBatis 밖에서 문자열을 이어 붙여 SQL을 실행하는 코드를 찾는다.
+rules:
+  - id: java-string-concat-sql
+    languages: [java]
+    severity: ERROR
+    message: SQL 문자열을 입력값과 이어 붙여 실행한다. 파라미터 바인딩을 쓴다.
+    metadata:
+      category: security
+      cwe: ["CWE-89: Improper Neutralization of Special Elements used in an SQL Command"]
+    pattern-either:
+      - pattern: $S.executeQuery("..." + $X)
+      - pattern: $S.executeQuery("..." + $X + "...")
+      - pattern: $S.executeUpdate("..." + $X)
+      - pattern: $S.executeUpdate("..." + $X + "...")
+      - pattern: $S.execute("..." + $X)
+      - pattern: $S.execute("..." + $X + "...")
+      - pattern: $C.prepareStatement("..." + $X)
+      - pattern: $C.prepareStatement("..." + $X + "...")
+      - pattern: $J.query("..." + $X, ...)
+      - pattern: $J.update("..." + $X, ...)
