@@ -3,12 +3,24 @@
 from __future__ import annotations
 
 import json
+from fnmatch import fnmatchcase
 from pathlib import Path
 
+import yaml
 from pydantic import BaseModel, Field, ValidationError
 
+from agent.config import RULES_DIR
 from agent.llm.gateway import BudgetExceeded, LlmGateway
-from agent.schemas.models import Case, EvidencePath, FixProposal, LensDisposition, Review, ReviewResult
+from agent.schemas.models import (
+    Case,
+    EvidencePath,
+    FixProposal,
+    LensDisposition,
+    Review,
+    ReviewResult,
+    RuleStatus,
+    SecurityRule,
+)
 
 PROMPT_DIR = Path(__file__).parent / "prompts"
 SUBMIT = "submit_result"
@@ -26,6 +38,45 @@ class _ReviewOutput(BaseModel):
     result: ReviewResult
     reason: str = ""
     evidence: EvidencePath | None = None
+
+
+class _RuleDraft(BaseModel):
+    # status와 rule_id는 LLM에게 받지 않는다. 규칙은 항상 사람 승인을 기다리는 상태로 시작한다.
+    title: str
+    requirement_quote: str
+    doc_ref: str | None = None
+    stride: list[str] = Field(default_factory=list)
+    category: int | None = None
+    cwe: str | None = None
+    standard_ref: str | None = None
+    applies_to: list[str] = Field(default_factory=list)
+
+
+class _CategoryNote(BaseModel):
+    category: int
+    reason: str
+
+
+class _Threat(BaseModel):
+    feature: str
+    stride: str
+    threat: str
+
+
+class _DeriveOutput(BaseModel):
+    threats: list[_Threat] = Field(default_factory=list)
+    rules: list[_RuleDraft] = Field(default_factory=list)
+    category_notes: list[_CategoryNote] = Field(default_factory=list)
+
+
+class DerivedRules(list):
+    """승인 대기 규칙 목록. 버린 후보와 빠진 범주는 warnings에 남는다."""
+
+    def __init__(self):
+        super().__init__()
+        self.warnings: list[str] = []
+        self.category_notes: dict[int, str] = {}
+        self.threats: list[dict] = []
 
 
 def wrap_data(label: str, text: str) -> str:
@@ -155,3 +206,41 @@ def propose_fix(
         case_id=case_id, sent_files=sent_files,
     )
     return response.parsed
+
+
+def load_templates() -> list[dict]:
+    return yaml.safe_load((RULES_DIR / "templates.yml").read_text(encoding="utf-8"))
+
+
+def _squeeze(text: str) -> str:
+    return " ".join(text.split())
+
+
+def derive_rules(design_docs, entrypoints: list[str], templates: list[dict], *, gateway: LlmGateway) -> DerivedRules:
+    """설계문서에서 보안 규칙 후보를 뽑는다. 문서에 없는 인용은 버리고, 결과는 모두 승인 대기로 시작한다."""
+    texts = {Path(d).name: Path(d).read_text(encoding="utf-8", errors="replace") for d in design_docs}
+    blocks = [wrap_data(f"DESIGN {name}", text) for name, text in texts.items()]
+    blocks.append(wrap_data("ENTRYPOINTS", "\n".join(entrypoints)))
+    blocks.append(wrap_data("TEMPLATES", json.dumps(templates, ensure_ascii=False)))
+    response = gateway.complete("onboard", _messages("onboard_v1", *blocks), prompt_version="onboard_v1",
+                                schema=_DeriveOutput, sent_files=list(texts))
+    output = response.parsed
+
+    derived = DerivedRules()
+    derived.threats = [t.model_dump() for t in output.threats]
+    derived.category_notes = {n.category: n.reason for n in output.category_notes}
+    known = {t["id"] for t in templates}
+    documents = _squeeze("\n".join(texts.values()))
+    for draft in output.rules:
+        if _squeeze(draft.requirement_quote) not in documents:
+            derived.warnings.append(f"문서에 없는 인용이라 뺌: {draft.requirement_quote}")
+            continue
+        if not any(fnmatchcase(e, p) for e in entrypoints for p in draft.applies_to):
+            derived.warnings.append(f"맞는 API가 없는 규칙: {draft.title} {draft.applies_to}")
+        derived.append(SecurityRule(
+            rule_id=f"R{len(derived) + 1}", status=RuleStatus.pending, version=1,
+            out_of_standard=draft.standard_ref not in known, **draft.model_dump(),
+        ))
+    covered = {r.category for r in derived} | set(derived.category_notes)
+    derived.warnings += [f"범주 {c}: 규칙도 해당 없음 이유도 없음" for c in range(1, 9) if c not in covered]
+    return derived

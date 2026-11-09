@@ -1,0 +1,9 @@
+이 저장소의 rules/templates.yml은 OWASP Application Security Verification Standard 5.0.0의
+항목 ID와 설명을 그대로 옮기고 탐지 범위 번호를 덧붙였습니다.
+
+원본: https://github.com/OWASP/ASVS/tree/v5.0.0
+저작권: Copyright (c) 2023 OWASP Foundation
+라이선스: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+https://creativecommons.org/licenses/by-sa/4.0/
+
+위 파일은 같은 라이선스(CC BY-SA 4.0)로 제공합니다.
