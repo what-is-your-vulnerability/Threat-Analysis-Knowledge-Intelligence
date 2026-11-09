@@ -7,7 +7,7 @@ from conftest import make_config
 from agent.cli.main import main
 from agent.config import ConfigError
 from agent.core.orchestrator import run_scan
-from agent.schemas.models import LedgerState, RunMode, VerdictState
+from agent.schemas.models import CaseSource, Fact, LedgerState, RunMode, VerdictState
 from agent.steps.cases import load_rules
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
@@ -38,14 +38,15 @@ def test_vulnerable_demo_reports_missing(scripted, tmp_path):
 
 def test_only_matching_flow_is_investigated(scripted, tmp_path):
     r = _scan(scripted, tmp_path)
-    assert [c.flow_id for c in r.cases] == ["DELETE /api/v1/admin/members/{id}"]
+    assert [c.flow_id for c in r.cases if c.source == CaseSource.rule] == ["DELETE /api/v1/admin/members/{id}"]
+    assert [c.slice_id for c in r.cases if c.source == CaseSource.question] == ["admin-members"]
 
 
 def test_fixed_demo_recheck_resolved(scripted, tmp_path):
     first = _scan(scripted, tmp_path / "before")
     r = _scan(scripted, tmp_path / "after", target=FIXED, mode=RunMode.recheck, previous=tmp_path / "before")
     assert r.exit_code == 0 and r.findings == []
-    assert [(i.case_id, i.change) for i in r.recheck] == [(first.cases[0].case_id, "resolved")]
+    assert {i.change for i in r.recheck} == {"resolved"} and first.cases[0].case_id in {i.case_id for i in r.recheck}
     assert r.verdicts[0].state == VerdictState.implemented
 
 
@@ -116,9 +117,10 @@ def test_quote_failure_requests_once_more(fake, tmp_path):
                        "expected_positions": ["y"],
                        "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 1, "end": 1,
                                  "quote": "없는 문장", "role": "root_control"}]}]}
-    fake.responses += [{"content": json.dumps(bad)}, {"content": json.dumps(bad)}]
+    fake.responses += [{"content": json.dumps(bad)}, {"content": json.dumps(bad)},
+                       {"content": '{"claims": []}'}]  # 세 번째는 고정 질문 항목
     r = _scan(fake, tmp_path)
-    assert len(fake.requests) == 2 and "quote_not_found" in json.dumps(fake.requests[1]["messages"], ensure_ascii=False)
+    assert len(fake.requests) == 3 and "quote_not_found" in json.dumps(fake.requests[1]["messages"], ensure_ascii=False)
     assert r.verdicts[0].state == VerdictState.unverified
 
 
@@ -147,3 +149,38 @@ def test_cli_reports_missing_model_without_traceback(tmp_path, capsys, monkeypat
     monkeypatch.chdir(tmp_path)  # 작업 폴더의 agent.yml을 읽지 않게 한다.
     code = main(["scan", str(VULN), "--out", str(tmp_path / "a"), "--slices", str(SLICES), "--rules", str(RULES_FILE)])
     assert code == 3 and "모델" in capsys.readouterr().err
+
+
+def test_all_11_questions_sent(scripted, tmp_path):
+    _scan(scripted, tmp_path)
+    sent = [json.dumps(r["messages"], ensure_ascii=False) for r in scripted.requests]
+    question = next(t for t in sent if "lens_id별로" in t)
+    assert all(lens in question for lens in ["L1", "L2a", "L2b", "L2c", "L3", "L4", "L5", "L6a", "L6b", "L7", "L8"])
+
+
+def test_no_issue_is_not_implemented(fake, tmp_path):
+    answer = {"claims": [], "dispositions": [{"lens_id": x, "disposition": "no_issue"} for x in (
+        "L1", "L2a", "L2b", "L2c", "L3", "L4", "L5", "L6a", "L6b", "L7", "L8")]}
+    fake.responses.append({"match": "lens_id별로", "content": json.dumps(answer)})
+    r = run_scan(VULN, design=[], out=tmp_path, config=make_config(fake), slices_file=SLICES)
+    assert r.verdicts == [] and r.exit_code == 0
+    html = (tmp_path / "report.html").read_text()
+    assert "구현 확인" not in html and "이상을 찾지 못함" in html
+
+
+def test_missing_answer_shows_in_report(fake, tmp_path):
+    fake.responses.append({"match": "lens_id별로", "content": '{"claims": [], "dispositions": []}'})
+    r = run_scan(VULN, design=[], out=tmp_path, config=make_config(fake), slices_file=SLICES)
+    assert r.exit_code == 1 and any(c.state == LedgerState.not_seen and c.subject == "L8" for c in r.ledger)
+    assert "L8" in (tmp_path / "report.html").read_text()
+
+
+def test_out_of_scope_alert_skips_llm(fake, tmp_path):
+    answer = {"claims": [], "dispositions": []}
+    fake.responses.append({"match": "lens_id별로", "content": json.dumps(answer)})
+    alert = Fact(kind="alert", file="src/main/java/demo/member/MemberService.java", line=3, tool="semgrep",
+                 detail={"cwe": "CWE-918", "rule": "ssrf", "message": "SSRF 위험 원문"})
+    r = run_scan(VULN, design=[], out=tmp_path, config=make_config(fake), slices_file=SLICES, alerts=[alert])
+    assert not any("SSRF 위험 원문" in json.dumps(q, ensure_ascii=False) for q in fake.requests)
+    assert "SSRF 위험 원문" in (tmp_path / "report.html").read_text() and r.findings[0].tool_confirmed
+    assert r.exit_code == 1

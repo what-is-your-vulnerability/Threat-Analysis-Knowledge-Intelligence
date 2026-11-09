@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from agent.schemas.models import (
     Case,
+    CaseSource,
     Claim,
     EvidenceCheck,
     EvidencePath,
@@ -20,6 +21,7 @@ from agent.schemas.models import (
 
 BLOCK_REVIEWS = 3
 OUTCOME_ORDER = {None: 0, Outcome.pass_: 1, Outcome.warn: 2, Outcome.block: 3}
+SOURCE_ORDER = {CaseSource.rule: 0, CaseSource.alert: 1, CaseSource.question: 2}
 
 
 def root_file(evidence: EvidencePath) -> str | None:
@@ -84,27 +86,43 @@ def policy_outcome(verdict: Verdict, *, tool_confirmed: bool, rule_approved: boo
 
 
 def group_findings(verdicts: list[Verdict], cases: list[Case], tool_confirmed_ids: set[str]) -> list[Finding]:
+    """같은 원인의 주장을 이슈 하나로 묶는다. 규칙 항목을 먼저 처리해 질문·경고 주장이 규칙 이슈에 합쳐지게 한다."""
     case_by_id = {c.case_id: c for c in cases}
     findings: dict[str, Finding] = {}
-    for verdict in verdicts:
+    members: dict[str, list[Verdict]] = {}
+    by_root: dict[tuple, str] = {}
+    ordered = sorted(verdicts, key=lambda v: SOURCE_ORDER[case_by_id[v.case_id].source])
+    for verdict in ordered:
         evidence = verdict.evidence
         if evidence is None or verdict.state not in (VerdictState.missing_suspected, VerdictState.unverified):
             continue
         case = case_by_id[verdict.case_id]
         file = root_file(evidence)
-        finding_id = make_finding_id(file, evidence.root_symbol, case.subject_id)
-        confirmed = finding_id in tool_confirmed_ids
+        root = (file, evidence.root_symbol, evidence.category)
+        if case.source == CaseSource.rule:
+            finding_id = make_finding_id(file, evidence.root_symbol, case.subject_id)
+        else:
+            finding_id = by_root.get(root) or make_finding_id(file, evidence.root_symbol, f"{case.source.value}:{evidence.category}")
+        by_root.setdefault(root, finding_id)
         finding = findings.setdefault(finding_id, Finding(
             finding_id=finding_id, state=verdict.state, root_file=file, root_symbol=evidence.root_symbol,
-            broken_rule=case.subject_id, cwe=evidence.cwe, category=evidence.category, statement=evidence.statement,
-            tool_confirmed=confirmed,
+            broken_rule=None if case.source == CaseSource.question else case.subject_id, cwe=evidence.cwe,
+            category=evidence.category, statement=evidence.statement,
         ))
         finding.evidence.append(evidence)
+        if case.case_id not in finding.case_ids:
+            finding.case_ids.append(case.case_id)
         if case.flow_id and case.flow_id not in finding.flows:
             finding.flows.append(case.flow_id)
         if verdict.state == VerdictState.missing_suspected:
             finding.state = verdict.state
-        outcome = policy_outcome(verdict, tool_confirmed=confirmed, rule_approved=False)
-        if OUTCOME_ORDER[outcome] > OUTCOME_ORDER[finding.outcome]:
-            finding.outcome = outcome
+            if case.source == CaseSource.alert:
+                finding.tool_confirmed = True
+        members.setdefault(finding_id, []).append(verdict)
+
+    for finding_id, finding in findings.items():
+        finding.tool_confirmed = finding.tool_confirmed or finding_id in tool_confirmed_ids
+        outcomes = [policy_outcome(v, tool_confirmed=finding.tool_confirmed, rule_approved=False)
+                    for v in members[finding_id]]
+        finding.outcome = max(outcomes, key=OUTCOME_ORDER.__getitem__)
     return list(findings.values())

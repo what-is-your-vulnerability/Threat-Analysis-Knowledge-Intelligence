@@ -1,7 +1,22 @@
 from pathlib import Path
 
-from agent.schemas.models import Budget, Flow, LedgerState, RuleStatus, SecurityRule, Slice
-from agent.steps.cases import build_cases, update_ledger
+from agent.llm.roles import InvestigateResult
+from agent.schemas.models import (
+    Budget,
+    CaseSource,
+    Disposition,
+    Fact,
+    Flow,
+    LedgerState,
+    LensDisposition,
+    RuleStatus,
+    SecurityRule,
+    Slice,
+    SliceFile,
+    VerdictState,
+)
+from agent.steps.cases import build_cases, pass_through_alerts, update_ledger
+from agent.steps.lenses import load_lenses
 from agent.steps.scope import scan_scope
 from agent.steps.slices import load_slices, render_slice
 
@@ -81,3 +96,69 @@ def test_render_slice_keeps_line_numbers():
     assert "=== FILE src/main/java/demo/member/MemberController.java ===" in text
     assert "   35|     public void delete(@PathVariable long id) {" in text
     assert "DELETE /api/v1/admin/members/{id}" in text
+
+
+def _alert(cwe="CWE-89", file="A.java", line=3, rule="sql-rule"):
+    return Fact(kind="alert", file=file, line=line, tool="semgrep",
+                detail={"cwe": cwe, "rule": rule, "message": "경고 내용"})
+
+
+def _question_case():
+    return build_cases([Slice(slice_id="s", name="s")], [], Budget(), lenses=load_lenses())[0]
+
+
+def test_missing_disposition_is_not_seen():
+    ledger = []
+    result = InvestigateResult(dispositions=[LensDisposition(lens_id="L1", disposition=Disposition.no_issue)])
+    update_ledger(ledger, _question_case(), result, lenses=load_lenses())
+    states = {c.subject: c.state for c in ledger}
+    assert len(ledger) == 11 and states["L1"] == LedgerState.checked and states["L8"] == LedgerState.not_seen
+
+
+def test_no_issue_is_recorded_as_not_found():
+    ledger = []
+    result = InvestigateResult(dispositions=[LensDisposition(lens_id="L1", disposition=Disposition.no_issue)])
+    update_ledger(ledger, _question_case(), result, lenses=load_lenses()[:1])
+    assert ledger[0].reason == "이상을 찾지 못함"
+
+
+def test_issue_without_claim_is_not_seen():
+    ledger = []
+    result = InvestigateResult(dispositions=[LensDisposition(lens_id="L1", disposition=Disposition.issue)])
+    update_ledger(ledger, _question_case(), result, lenses=load_lenses()[:1])
+    assert ledger[0].state == LedgerState.not_seen
+
+
+def test_alert_in_scope_makes_case():
+    slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")])]
+    case = build_cases(slices, [], Budget(), alerts=[_alert()])[0]
+    assert case.source == CaseSource.alert and case.slice_id == "s" and "경고 내용" in case.question
+    assert case.subject_id == "sql-rule"
+
+
+def test_alert_id_ignores_line_number():
+    slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")])]
+    first = build_cases(slices, [], Budget(), alerts=[_alert(line=3)])[0]
+    second = build_cases(slices, [], Budget(), alerts=[_alert(line=9)])[0]
+    assert first.case_id == second.case_id
+
+
+def test_out_of_scope_alert_makes_no_case_and_passes_through():
+    slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")])]
+    ssrf = _alert(cwe="CWE-918", rule="ssrf-rule")
+    assert build_cases(slices, [], Budget(), alerts=[ssrf]) == []
+    finding = pass_through_alerts([ssrf], slices)[0]
+    assert finding.state == VerdictState.unverified and finding.tool_confirmed and finding.root_file == "A.java"
+    assert finding.statement == "경고 내용" and finding.cwe == "CWE-918"
+
+
+def test_in_scope_alert_outside_slices_passes_through():
+    slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="B.java")])]
+    alert = _alert()
+    assert build_cases(slices, [], Budget(), alerts=[alert]) == []
+    assert pass_through_alerts([alert], slices)[0].root_file == "A.java"
+
+
+def test_in_scope_alert_inside_slice_is_not_passed_through():
+    slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")])]
+    assert pass_through_alerts([_alert()], slices) == []

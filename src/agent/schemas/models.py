@@ -282,6 +282,7 @@ class Finding(BaseModel):
     fix: FixProposal | None = None
     outcome: Outcome | None = None
     tool_confirmed: bool = False
+    case_ids: list[str] = Field(default_factory=list)
 
 
 class LedgerCell(BaseModel):
