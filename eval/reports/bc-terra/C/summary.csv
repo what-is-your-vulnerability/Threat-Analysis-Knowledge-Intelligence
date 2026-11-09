@@ -1,0 +1,5 @@
+tool,detected,false_alarm,pair_discrimination,findings_total,unmatched
+r1,4/16,1/11,0/8,55,52
+r2,3/16,1/11,0/8,54,51
+r3,3/16,1/11,0/8,56,53
+UNION,4/16,1/11,0/8,,
