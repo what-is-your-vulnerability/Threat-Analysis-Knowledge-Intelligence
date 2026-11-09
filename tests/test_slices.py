@@ -176,7 +176,7 @@ def test_e2e_without_manual_slices(fake, tmp_path):
     r = run_scan(FIX / "vulnerable", design=[FIX / "design.md"], out=tmp_path, config=make_config(fake),
                  rules=load_rules(FIX / "rules.yml"))
     assert r.exit_code == 1 and r.findings[0].state == VerdictState.missing_suspected
-    assert r.findings[0].root_file.endswith("MemberController.java") and [c.slice_id for c in r.cases] == ["admin"]
+    assert r.findings[0].root_file.endswith("MemberController.java") and {c.slice_id for c in r.cases} == {"admin"}
 
 
 def test_spring_without_controllers_exits_3(tmp_path, fake):

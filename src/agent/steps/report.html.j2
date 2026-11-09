@@ -54,6 +54,14 @@ td, th { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: lef
 {% for v in verdicts %}<tr><td>{{ state_labels[v.state] }}</td><td>{{ questions.get(v.case_id, v.case_id) }}</td><td>{{ v.reason }}</td></tr>{% endfor %}
 </table>
 
+{% if lens_answers %}
+<h2>고정 질문 결과</h2>
+<p class="muted">이상을 찾지 못한 것은 구현을 확인했다는 뜻이 아닙니다.</p>
+<table><tr><th>질문</th><th>묶음</th><th>답</th></tr>
+{% for c in lens_answers %}<tr><td>{{ c.subject }}</td><td>{{ c.target }}</td><td>{{ c.reason }}</td></tr>{% endfor %}
+</table>
+{% endif %}
+
 <h2>못 본 범위</h2>
 <table><tr><th>대상</th><th>이유</th></tr>
 {% for c in not_seen %}<tr><td>{{ c.subject }} · {{ c.target }}</td><td>{{ c.reason }}</td></tr>{% endfor %}
