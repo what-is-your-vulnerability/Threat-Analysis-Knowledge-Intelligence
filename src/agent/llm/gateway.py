@@ -34,6 +34,10 @@ class LlmFormatError(RuntimeError):
     pass
 
 
+class OutputLimitExceeded(LlmFormatError):
+    """응답이 출력 한도에서 잘렸다. 같은 한도로 다시 보내도 같으므로 재시도하지 않는다."""
+
+
 class LlmCallError(RuntimeError):
     pass
 
@@ -121,6 +125,9 @@ class LlmGateway:
                 response = self._send(kwargs, schema, budget, entry)
                 error = None
                 break
+            except OutputLimitExceeded as e:
+                error = e
+                break
             except (LlmCallError, LlmFormatError) as e:
                 error = e
         entry.seconds = round(time.monotonic() - started, 3)
@@ -147,6 +154,8 @@ class LlmGateway:
         usage = raw.usage
         entry.input_tokens += usage.prompt_tokens if usage else 0
         entry.output_tokens += usage.completion_tokens if usage else 0
+        if raw.choices[0].finish_reason == "length":
+            raise OutputLimitExceeded(f"출력 한도 {budget.max_output_tokens} 토큰에서 응답이 잘림")
         message = raw.choices[0].message
         tool_calls = [
             {"id": c.id, "name": c.function.name, "arguments": c.function.arguments} for c in message.tool_calls or []
