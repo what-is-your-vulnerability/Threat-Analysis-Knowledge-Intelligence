@@ -1,0 +1,8 @@
+# 수동 실행용 모델 이름. 주소는 모의 LLM(tests/fake_llm.py serve)이 출력한 값을 LLM_BASE_URL로 넘긴다.
+# 넘기지 않으면 닫힌 포트(9)로 가서 바로 실패한다. 다른 서비스로 요청이 새지 않게 하기 위해서다.
+base_url: http://127.0.0.1:9/v1
+models:
+  onboard: fake-model
+  investigate: fake-model
+  review: fake-model
+  fix: fake-model

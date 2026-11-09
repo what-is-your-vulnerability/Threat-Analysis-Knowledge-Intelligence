@@ -1,0 +1,9 @@
+- rule_id: R1
+  title: 회원 삭제는 관리자 권한이 있어야 한다
+  requirement_quote: 회원 삭제는 관리자 권한이 있어야 한다.
+  doc_ref: design.md#회원 관리 API
+  stride: [E]
+  category: 2
+  cwe: CWE-862
+  applies_to: ["DELETE /api/v1/admin/members/*"]
+  status: approved

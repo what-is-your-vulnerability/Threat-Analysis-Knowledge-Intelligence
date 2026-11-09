@@ -8,6 +8,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import openai
 from pydantic import BaseModel, ValidationError
@@ -16,6 +17,7 @@ from agent.config import AgentConfig, ConfigError
 from agent.llm import masking
 from agent.schemas.models import Budget, ManifestEntry
 
+OPENAI_HOST = "api.openai.com"
 CHARS_PER_TOKEN = 3
 ATTEMPTS = 2
 
@@ -36,6 +38,13 @@ class LlmCallError(RuntimeError):
     pass
 
 
+def _api_key(base_url: str) -> str:
+    # OpenAI 키는 OpenAI로만 보낸다. 다른 주소에 쓸 키는 LLM_API_KEY로 따로 받고, 로컬 모델은 없어도 된다.
+    if urlsplit(base_url).hostname == OPENAI_HOST:
+        return os.environ.get("OPENAI_API_KEY") or "none"
+    return os.environ.get("LLM_API_KEY") or "none"
+
+
 @dataclass
 class LlmResponse:
     content: str | None
@@ -50,12 +59,12 @@ class LlmGateway:
         self.config = config
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        # 로컬 모델은 키가 없어도 되므로 빈 키 대신 자리표시자를 넘긴다.
-        self._client = openai.OpenAI(
-            base_url=config.base_url, api_key=os.environ.get("OPENAI_API_KEY") or "none", max_retries=0
-        )
+        self.manifest_ids_by_case: dict[str, list[str]] = {}
+        self._client = openai.OpenAI(base_url=config.base_url, api_key=_api_key(config.base_url), max_retries=0)
 
     def _record(self, entry: ManifestEntry) -> None:
+        if entry.case_id:
+            self.manifest_ids_by_case.setdefault(entry.case_id, []).append(entry.manifest_id)
         with (self.run_dir / "manifest.jsonl").open("a", encoding="utf-8") as f:
             f.write(entry.model_dump_json() + "\n")
 

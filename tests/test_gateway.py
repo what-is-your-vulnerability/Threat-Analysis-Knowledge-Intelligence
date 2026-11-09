@@ -120,3 +120,22 @@ def test_tool_calls_are_returned(fake, tmp_path):
     fake.responses.append({"tool_calls": [{"name": "read_code", "arguments": {"path": "A.java"}}]})
     r = _call(_gateway(fake, tmp_path), tools=[{"type": "function", "function": {"name": "read_code"}}])
     assert r.tool_calls[0]["name"] == "read_code" and json.loads(r.tool_calls[0]["arguments"]) == {"path": "A.java"}
+
+
+def _sent_key(fake, tmp_path, base_url):
+    gw = LlmGateway(make_config(fake).model_copy(update={"base_url": base_url}), tmp_path)
+    return gw._client.api_key
+
+
+def test_openai_key_goes_only_to_openai(fake, tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "real-openai-key")
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    assert _sent_key(fake, tmp_path, "https://api.openai.com/v1") == "real-openai-key"
+    assert _sent_key(fake, tmp_path, "http://127.0.0.1:18080/v1") == "none"
+    assert _sent_key(fake, tmp_path, "https://api.openai.com.evil.example/v1") == "none"
+
+
+def test_other_endpoint_uses_its_own_key(fake, tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "real-openai-key")
+    monkeypatch.setenv("LLM_API_KEY", "local-key")
+    assert _sent_key(fake, tmp_path, "http://127.0.0.1:18080/v1") == "local-key"
