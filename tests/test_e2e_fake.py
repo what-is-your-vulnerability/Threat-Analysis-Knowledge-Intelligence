@@ -118,7 +118,7 @@ def test_quote_failure_requests_once_more(fake, tmp_path):
                                  "quote": "없는 문장", "role": "root_control"}]}]}
     fake.responses += [{"content": json.dumps(bad)}, {"content": json.dumps(bad)}]
     r = _scan(fake, tmp_path)
-    assert len(fake.requests) == 2 and "quote_not_found" in str(fake.requests[1]["messages"][-1]["content"])
+    assert len(fake.requests) == 2 and "quote_not_found" in json.dumps(fake.requests[1]["messages"], ensure_ascii=False)
     assert r.verdicts[0].state == VerdictState.unverified
 
 
