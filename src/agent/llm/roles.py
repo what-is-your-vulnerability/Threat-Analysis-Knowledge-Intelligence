@@ -49,11 +49,14 @@ def investigate(
     requirement: str | None = None,
     tools=None,
     sent_files: list[str] | None = None,
+    feedback: str | None = None,
 ) -> InvestigateResult:
     blocks = [wrap_data("QUESTION", case.question)]
     if requirement:
         blocks.append(wrap_data("REQUIREMENT", requirement))
     blocks.append(wrap_data("CODE", slice_text))
+    if feedback:
+        blocks.append(feedback)
     response = gateway.complete(
         "investigate", _messages("investigate_v1", *blocks), prompt_version="investigate_v1",
         schema=InvestigateResult, budget=case.budget, case_id=case.case_id, sent_files=sent_files,

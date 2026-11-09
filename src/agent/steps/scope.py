@@ -20,7 +20,7 @@ EXCLUDED_DIRS = {".git", "node_modules", "target", "build", "dist"}
 def _read_commit(root: Path) -> str | None:
     if not (root / ".git").exists():
         return None
-    r = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=False)
     return r.stdout.strip() if r.returncode == 0 else None
 
 

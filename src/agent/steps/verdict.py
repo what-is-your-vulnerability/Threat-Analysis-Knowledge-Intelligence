@@ -31,7 +31,10 @@ def root_file(evidence: EvidencePath) -> str | None:
 def _from_problem_claim(reviews: list[Review]) -> tuple[VerdictState, str]:
     refuted = [r for r in reviews if r.result == ReviewResult.refuted]
     if refuted:
-        proven = [r for r in refuted if r.evidence and r.evidence_check and r.evidence_check.passed]
+        proven = [
+            r for r in refuted
+            if r.evidence and r.evidence.claim == Claim.implemented and r.evidence_check and r.evidence_check.passed
+        ]
         if proven:
             return VerdictState.implemented, f"재검토가 근거를 들어 기각: {proven[0].reason}"
         return VerdictState.unverified, f"재검토가 기각했지만 근거를 확인하지 못함: {refuted[0].reason}"

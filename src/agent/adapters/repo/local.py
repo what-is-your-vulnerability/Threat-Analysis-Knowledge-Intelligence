@@ -13,7 +13,7 @@ class ForbiddenPathError(ValueError):
     pass
 
 
-def _check_allowed(path: Path) -> None:
+def check_allowed(path: Path) -> None:
     parts = path.parts
     if FORBIDDEN_NAMES.intersection(parts):
         raise ForbiddenPathError(f"접근 금지 경로: {path}")
@@ -36,7 +36,7 @@ def _extract_zip(archive: Path, dest: Path) -> Path:
 
 def open_target(path: Path, workdir: Path) -> Path:
     resolved = Path(path).resolve()
-    _check_allowed(resolved)
+    check_allowed(resolved)
     if resolved.is_file() and zipfile.is_zipfile(resolved):
         return _extract_zip(resolved, Path(workdir) / resolved.stem)
     return resolved

@@ -1,0 +1,149 @@
+import json
+from pathlib import Path
+
+import pytest
+from conftest import make_config
+
+from agent.cli.main import main
+from agent.config import ConfigError
+from agent.core.orchestrator import run_scan
+from agent.schemas.models import LedgerState, RunMode, VerdictState
+from agent.steps.cases import load_rules
+
+FIX = Path(__file__).parent / "fixtures" / "spring-members"
+VULN, FIXED, DESIGN, SLICES, RULES_FILE = (
+    FIX / "vulnerable", FIX / "fixed", FIX / "design.md", FIX / "slices.yml", FIX / "rules.yml")
+RULES = load_rules(RULES_FILE)
+
+
+@pytest.fixture
+def scripted(fake):
+    fake.responses.extend(json.loads((FIX / "fake_script.json").read_text(encoding="utf-8")))
+    return fake
+
+
+def _scan(fake, out, target=VULN, **kw):
+    return run_scan(target, design=[DESIGN], out=out, config=make_config(fake), slices_file=SLICES, rules=RULES, **kw)
+
+
+def test_vulnerable_demo_reports_missing(scripted, tmp_path):
+    r = _scan(scripted, tmp_path)
+    assert r.exit_code == 1
+    f = r.findings[0]
+    assert f.state == VerdictState.missing_suspected and f.root_file.endswith("MemberController.java")
+    assert (tmp_path / "report.json").exists() and "회원 삭제" in (tmp_path / "report.html").read_text()
+    assert f.fix and "PreAuthorize" in f.fix.code_example and f.cwe == "CWE-862"
+    assert (tmp_path / "results.sarif").exists() and (tmp_path / "ledger.json").exists()
+
+
+def test_only_matching_flow_is_investigated(scripted, tmp_path):
+    r = _scan(scripted, tmp_path)
+    assert [c.flow_id for c in r.cases] == ["DELETE /api/v1/admin/members/{id}"]
+
+
+def test_fixed_demo_recheck_resolved(scripted, tmp_path):
+    first = _scan(scripted, tmp_path / "before")
+    r = _scan(scripted, tmp_path / "after", target=FIXED, mode=RunMode.recheck, previous=tmp_path / "before")
+    assert r.exit_code == 0 and r.findings == []
+    assert [(i.case_id, i.change) for i in r.recheck] == [(first.cases[0].case_id, "resolved")]
+    assert r.verdicts[0].state == VerdictState.implemented
+
+
+def test_llm_failure_becomes_unverified(fake, tmp_path):
+    r = _scan(fake, tmp_path)
+    assert r.exit_code == 1 and r.verdicts[0].state == VerdictState.unverified
+    assert r.ledger[0].state == LedgerState.not_seen and r.ledger[0].reason
+
+
+def test_report_never_says_safe(scripted, tmp_path):
+    _scan(scripted, tmp_path / "a")
+    _scan(scripted, tmp_path / "b", target=FIXED)
+    for d in ("a", "b"):
+        assert "안전" not in (tmp_path / d / "report.html").read_text()
+        assert "안전" not in (tmp_path / d / "report.json").read_text()
+
+
+def test_report_escapes_code(fake, tmp_path):
+    claim = {"claim": "absent", "statement": "<script>alert(1)</script>", "hops": [], "basis": ["x"],
+             "expected_positions": ["y"]}
+    fake.responses += [
+        {"match": "재검토한다", "content": '{"result": "kept"}'},
+        {"match": "수정 방법을 제안한다", "content": '{"location": "l", "code_example": "c", "check_scenario": "s"}'},
+        {"match": "조사 항목 하나를", "content": json.dumps({"claims": [claim]})},
+    ]
+    _scan(fake, tmp_path)
+    assert "<script>alert" not in (tmp_path / "report.html").read_text()
+
+
+def test_report_lists_what_was_not_seen(fake, tmp_path):
+    (tmp_path / "t").mkdir()
+    (tmp_path / "t" / "a.bin").write_bytes(b"x")
+    (tmp_path / "t" / "a.java").write_text("class A {}\n")
+    r = run_scan(tmp_path / "t", design=[], out=tmp_path / "o", config=make_config(fake), slices_file=SLICES)
+    html = (tmp_path / "o" / "report.html").read_text()
+    assert "못 본 범위" in html and "a.bin" in html and r.exit_code == 1
+
+
+def test_failed_scope_exit_3(tmp_path):
+    (tmp_path / "empty").mkdir()
+    r = run_scan(tmp_path / "empty", design=[], out=tmp_path / "o", config=make_config_unused())
+    assert r.exit_code == 3 and (tmp_path / "o" / "report.json").exists()
+
+
+def make_config_unused():
+    from agent.config import AgentConfig
+
+    return AgentConfig()
+
+
+def test_missing_model_is_not_turned_into_a_finding(fake, tmp_path):
+    with pytest.raises(ConfigError):
+        run_scan(VULN, design=[], out=tmp_path, config=make_config(fake, models={"investigate": None}),
+                 slices_file=SLICES, rules=RULES)
+    assert fake.requests == []
+
+
+def test_forbidden_design_path_rejected(fake, tmp_path):
+    from agent.adapters.repo.local import ForbiddenPathError
+
+    with pytest.raises(ForbiddenPathError):
+        run_scan(VULN, design=[tmp_path / "ground-truth-private" / "x.md"], out=tmp_path / "o",
+                 config=make_config(fake), slices_file=SLICES, rules=RULES)
+
+
+def test_quote_failure_requests_once_more(fake, tmp_path):
+    bad = {"claims": [{"claim": "absent", "statement": "s", "root_symbol": "MemberController.delete", "basis": ["x"],
+                       "expected_positions": ["y"],
+                       "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 1, "end": 1,
+                                 "quote": "없는 문장", "role": "root_control"}]}]}
+    fake.responses += [{"content": json.dumps(bad)}, {"content": json.dumps(bad)}]
+    r = _scan(fake, tmp_path)
+    assert len(fake.requests) == 2 and "quote_not_found" in str(fake.requests[1]["messages"][-1]["content"])
+    assert r.verdicts[0].state == VerdictState.unverified
+
+
+def test_refuted_review_evidence_is_checked(fake, tmp_path):
+    fake.responses += [
+        {"match": "재검토한다", "content": json.dumps({"result": "refuted", "reason": "있다", "evidence": {
+            "claim": "implemented", "statement": "s", "checked_value": "x", "used_value": "x",
+            "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 1, "end": 1,
+                      "quote": "지어낸 코드 x", "role": "root_control"}]}})},
+        *json.loads((FIX / "fake_script.json").read_text(encoding="utf-8"))[3:],
+    ]
+    r = _scan(fake, tmp_path)
+    assert r.verdicts[0].state == VerdictState.unverified and r.verdicts[0].evidence.claim.value == "absent"
+
+
+def test_cli_scan_and_recheck(scripted, tmp_path, capsys, monkeypatch):
+    cfg = tmp_path / "c.yml"
+    cfg.write_text(f"base_url: {scripted.url}\nmodels: {{investigate: m, review: m, fix: m}}\n")
+    common = ["--slices", str(SLICES), "--rules", str(RULES_FILE), "--config", str(cfg), "--design", str(DESIGN)]
+    assert main(["scan", str(VULN), "--out", str(tmp_path / "a"), *common]) == 1
+    assert main(["recheck", str(FIXED), "--previous", str(tmp_path / "a"), "--out", str(tmp_path / "b"), *common]) == 0
+    assert "resolved" in capsys.readouterr().out
+
+
+def test_cli_reports_missing_model_without_traceback(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # 작업 폴더의 agent.yml을 읽지 않게 한다.
+    code = main(["scan", str(VULN), "--out", str(tmp_path / "a"), "--slices", str(SLICES), "--rules", str(RULES_FILE)])
+    assert code == 3 and "모델" in capsys.readouterr().err
