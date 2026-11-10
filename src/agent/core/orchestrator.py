@@ -15,44 +15,33 @@ from agent.adapters.repo.local import check_allowed, open_target
 from agent.adapters.scanner.docker import keep_snapshot_alerts, plan_scanners, run_scanner
 from agent.adapters.scanner.sarif import coverage_gaps
 from agent.config import AgentConfig
+from agent.core.case_graph import LLM_ERRORS, ScanRuntime, run_case
 from agent.core.tracing import trace_client
-from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
-from agent.llm.roles import investigate, propose_fix, review
+from agent.llm.gateway import LlmGateway
+from agent.llm.roles import propose_fix
 from agent.schemas.models import (
     Capability,
     Case,
     CaseSource,
-    CheckFailure,
-    Claim,
-    EvidenceCheck,
-    EvidencePath,
     Finding,
-    Flow,
     LedgerCell,
     LedgerState,
     Outcome,
-    Review,
-    ReviewResult,
     RuleStatus,
     RunMode,
-    SecurityRule,
     Slice,
     Snapshot,
     Verdict,
     VerdictState,
 )
-from agent.steps.cases import alerts_by_slice, build_cases, pass_through_alerts, update_ledger
-from agent.steps.evidence import check_evidence
+from agent.steps.cases import alerts_by_slice, build_cases, pass_through_alerts
 from agent.steps.lenses import load_lenses
 from agent.steps.recheck import PROBLEM_STATES, RecheckItem, compare_runs
 from agent.steps.report import write_report
 from agent.steps.scope import scan_scope
 from agent.steps.slices import build_slices, fallback_slices, load_slices, locate_handlers, render_slice
-from agent.steps.verdict import decide, group_findings
+from agent.steps.verdict import group_findings
 from agent.tools.readonly import ReadOnlyTools
-
-LLM_ERRORS = (LlmCallError, LlmFormatError, BudgetExceeded, SecretLeft)
-QUOTE_FAILURES = {CheckFailure.quote_not_found, CheckFailure.quote_ambiguous}
 
 
 @dataclass
@@ -68,79 +57,6 @@ class RunResult:
     cases: list[Case] = field(default_factory=list)
     recheck: list[RecheckItem] = field(default_factory=list)
     error: str | None = None
-
-
-def _flows_for(case: Case, slice_: Slice, claim: EvidencePath) -> list[Flow]:
-    if case.flow_id:
-        return [f for f in slice_.flows if f.flow_id == case.flow_id]
-    return [f for f in slice_.flows if f.handler_symbol == claim.root_symbol] or slice_.flows
-
-
-def _quote_feedback(claims: list[EvidencePath], checks: list[EvidenceCheck]) -> str:
-    wrong = [
-        f"{hop.file}:{hop.start} {sorted(f.value for f in QUOTE_FAILURES & set(check.failures))}"
-        for claim, check in zip(claims, checks)
-        if QUOTE_FAILURES & set(check.failures)
-        for hop in claim.hops
-    ]
-    return "이전 응답의 인용을 코드에서 찾지 못했다. 코드 문장을 그대로 복사하고 줄 번호를 맞춰 다시 내라:\n" + "\n".join(wrong)
-
-
-def _review_claim(claim, check, slice_text, snapshot, flows, gateway, case, sent, tools) -> Review:
-    fixed = claim.model_copy(update={"hops": check.fixed_hops})
-    try:
-        result = review(fixed, slice_text, gateway=gateway, case_id=case.case_id, sent_files=sent, tools=tools)
-    except LLM_ERRORS as e:
-        return Review(result=ReviewResult.not_proven, reason=f"재검토 호출 실패: {e}")
-    if result.result == ReviewResult.refuted and result.evidence:
-        result.evidence_check = check_evidence(result.evidence, snapshot, flows)
-    return result
-
-
-def _case_trace_inputs(inputs: dict) -> dict:
-    """조사 항목 추적에는 ID와 질문만 남긴다. 코드 원문은 넣지 않는다."""
-    case = inputs["case"]
-    return {"case_id": case.case_id, "source": case.source.value, "subject": case.subject_id, "question": case.question,
-            "slice": inputs["slice_"].name, "flow": case.flow_id}
-
-
-def _verdict_trace_outputs(verdicts) -> dict:
-    return {"verdicts": [{"state": v.state.value, "reason": v.reason, "claim_key": v.claim_key} for v in verdicts]}
-
-
-@traceable(name="조사 항목", run_type="chain", process_inputs=_case_trace_inputs, process_outputs=_verdict_trace_outputs)
-def _run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot, gateway, ledger, tools, lenses,
-              alerts=()) -> list[Verdict]:
-    slice_text = render_slice(slice_, snapshot, alerts)
-    sent = [f.path for f in slice_.files]
-    requirement = f"{rule.doc_ref}: {rule.requirement_quote}" if rule and rule.requirement_quote else None
-    ask = {"gateway": gateway, "requirement": requirement, "sent_files": sent, "tools": tools}
-    try:
-        result = investigate(case, slice_text, **ask)
-        checks = [check_evidence(c, snapshot, _flows_for(case, slice_, c)) for c in result.claims]
-        if any(QUOTE_FAILURES & set(c.failures) for c in checks):
-            result = investigate(case, slice_text, feedback=_quote_feedback(result.claims, checks), **ask)
-    except LLM_ERRORS as e:
-        update_ledger(ledger, case, None, error=str(e), lenses=lenses)
-        return [decide(case.case_id, None, None, [], slice_.code_hash, error=str(e))]
-
-    if case.source == CaseSource.question:
-        # 답만 있고 주장이 없으면 판정을 만들지 않는다. "이상을 찾지 못함"은 구현 확인이 아니다.
-        update_ledger(ledger, case, result, lenses=lenses)
-    else:
-        update_ledger(ledger, case, result, error=None if result.claims else "주장이 없음")
-        if not result.claims:
-            return [decide(case.case_id, None, None, [], slice_.code_hash)]
-
-    verdicts = []
-    for claim in result.claims:
-        flows = _flows_for(case, slice_, claim)
-        check = check_evidence(claim, snapshot, flows)
-        reviews = []
-        if check.passed and claim.claim in (Claim.absent, Claim.defect):
-            reviews.append(_review_claim(claim, check, slice_text, snapshot, flows, gateway, case, sent, tools))
-        verdicts.append(decide(case.case_id, claim, check, reviews, slice_.code_hash))
-    return verdicts
 
 
 def _add_fixes(findings, cases, slices, snapshot, gateway) -> None:
@@ -280,6 +196,7 @@ def _scan(target, *, design, out, settings: AgentConfig, mode: RunMode, slices_f
     spring = extract_spring(snapshot, index)
     snapshot.capabilities |= {f"spring.{k}": v for k, v in spring.capabilities.items()}
     tools = ReadOnlyTools(snapshot, index, mappers, spring.entrypoints, design)
+    runtime = ScanRuntime(gateway=gateway, reader=tools, index=index, mappers=mappers, spring=spring, lenses=load_lenses())
     if slices_file is not None:
         slices = load_slices(Path(slices_file), snapshot)
         locate_handlers(slices, index)
@@ -290,8 +207,7 @@ def _scan(target, *, design, out, settings: AgentConfig, mode: RunMode, slices_f
     result.slices = slices
     scanner_alerts, covered_cwes = _run_scanners(snapshot, config, out, result)
     alerts = [*alerts, *scanner_alerts]
-    lenses = load_lenses()
-    result.cases = cases = build_cases(slices, list(rules), config.budget, lenses=lenses, alerts=alerts)
+    result.cases = cases = build_cases(slices, list(rules), config.budget, lenses=runtime.lenses, alerts=alerts)
     if previous is not None:
         cases += _recheck_cases(Path(previous), slices, config.budget)
     result.ledger += _code_outside_slices(snapshot, slices)
@@ -309,10 +225,9 @@ def _scan(target, *, design, out, settings: AgentConfig, mode: RunMode, slices_f
                                             reason="승인되지 않았거나 맞는 API가 없음"))
     shown_alerts = alerts_by_slice(alerts, slices)
     for case in cases:
-        verdicts = _run_case(case, slice_by_id[case.slice_id], rule_by_id.get(case.subject_id), snapshot, gateway,
-                             result.ledger, tools, lenses, shown_alerts.get(case.slice_id, ()))
-        for v in verdicts:
-            v.manifest_ids = list(gateway.manifest_ids_by_case.get(case.case_id, []))
+        verdicts, cells = run_case(case, slice_by_id[case.slice_id], rule_by_id.get(case.subject_id), snapshot, runtime,
+                                   shown_alerts.get(case.slice_id, ()))
+        result.ledger += cells
         result.verdicts += verdicts
 
     result.findings = group_findings(result.verdicts, cases, set())
