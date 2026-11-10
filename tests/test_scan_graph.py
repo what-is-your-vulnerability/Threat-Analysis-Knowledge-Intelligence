@@ -1,3 +1,4 @@
+import json
 import threading
 
 from conftest import make_config
@@ -6,7 +7,7 @@ from agent.adapters.scanner.docker import ScannerSpec
 from agent.adapters.scanner.sarif import ScanOutcome
 from agent.core import orchestrator
 from agent.core.orchestrator import run_scan
-from agent.schemas.models import Capability, Fact, LedgerState
+from agent.schemas.models import Capability, CaseSource, Fact, LedgerState
 
 NO_ISSUE = {"match": "lens_id별로", "content": '{"claims": [], "dispositions": []}'}
 
@@ -114,3 +115,21 @@ def test_successful_scanner_is_checked_but_does_not_pass_an_empty_scan(fake, tmp
     assert [(c.state, c.reason) for c in ran] == [(LedgerState.checked, "실행함")]
     assert "scanner:a" not in (tmp_path / "o" / "report.html").read_text()  # 고정 질문 결과 표에 섞이지 않는다
     assert orchestrator._exit_code(orchestrator.RunResult(ledger=ran)) == 1
+
+
+def test_alert_cases_over_cap_pass_through(fake, tmp_path):
+    root = _target(tmp_path, files=("a.mjs", "b.mjs"))
+    slices = tmp_path / "slices.yml"
+    slices.write_text("- name: s\n  files:\n    - path: a.mjs\n    - path: b.mjs\n")
+    alerts = [Fact(kind="alert", file=f"{n}.mjs", line=1, tool="semgrep",
+                   detail={"cwe": "CWE-89", "rule": "sql", "message": f"{n} 경고 원문"}) for n in ("a", "b")]
+    fake.responses.append(NO_ISSUE)
+    r = run_scan(root, design=[], out=tmp_path / "o", config=make_config(fake, max_alert_cases=1), slices_file=slices,
+                 alerts=alerts)
+    assert [c.question.split("\n")[0] for c in r.cases if c.source == CaseSource.alert] == [
+        "스캐너 경고가 실제 문제인지 코드로 확인하라. CWE-89, 파일 a.mjs."]
+    asked = [json.dumps(q, ensure_ascii=False) for q in fake.requests]
+    asked = [q for q in asked if "스캐너 경고가 실제 문제인지" in q]
+    assert asked and not any("파일 b.mjs" in q for q in asked)
+    assert any(f.tool_confirmed and f.statement == "b 경고 원문" for f in r.findings)
+    assert any(c.subject == "경고 항목 상한" and c.state == LedgerState.not_seen and "1개" in c.reason for c in r.ledger)

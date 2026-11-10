@@ -169,6 +169,7 @@ class ScanState(TypedDict, total=False):
     runtime: Any
     slices: list
     cases: list
+    capped_cases: list  # 상한을 넘어 조사하지 않은 경고 항목 ID
     next_case: int
     alerts: list  # 분석 범위 안 경고(structure가 거른 결과)
     findings: list
@@ -242,9 +243,15 @@ def _structure(state: ScanState) -> dict:
 def _plan_cases(state: ScanState) -> dict:
     settings, slices, rules, design = state["settings"], state["slices"], list(state["rules"]), state["design"]
     cases = build_cases(slices, rules, settings.budget, lenses=state["runtime"].lenses, alerts=state["alerts"])
+    capped = [c.case_id for c in cases if c.source == CaseSource.alert][settings.max_alert_cases:]
+    cases = [c for c in cases if c.case_id not in capped]
     if state["previous"] is not None:
         cases += _recheck_cases(Path(state["previous"]), slices, settings.budget)
     cells = _code_outside_slices(state["snapshot"], slices)
+    if capped:
+        cells.append(LedgerCell(subject="경고 항목 상한", target="*", state=LedgerState.not_seen,
+                                reason=f"상한 {settings.max_alert_cases}개를 넘은 경고 항목 {len(capped)}개는 "
+                                       "AI 확인 없이 도구 결과로만 실음"))
     if design and not any(r.status == RuleStatus.approved for r in rules):
         cells.append(LedgerCell(
             subject="설계문서", target="*", state=LedgerState.not_seen,
@@ -252,7 +259,7 @@ def _plan_cases(state: ScanState) -> dict:
         ))
     cells += [LedgerCell(subject=rule.rule_id, target="*", state=LedgerState.not_seen, reason="승인되지 않았거나 맞는 API가 없음")
               for rule in rules if not any(c.subject_id == rule.rule_id for c in cases)]
-    return {"cases": cases, "ledger": cells, "next_case": 0}
+    return {"cases": cases, "capped_cases": capped, "ledger": cells, "next_case": 0}
 
 
 def _run_one_case(state: ScanState) -> dict:
@@ -274,6 +281,7 @@ def _findings(state: ScanState) -> dict:
     _add_fixes(findings, cases, slices, state["snapshot"], state["runtime"].gateway)
     investigated = {v.case_id for v in verdicts if v.evidence is not None}
     failed_alerts = {c.case_id for c in cases if c.source == CaseSource.alert and c.case_id not in investigated}
+    failed_alerts |= set(state["capped_cases"])  # 상한으로 조사하지 않은 경고도 실패한 경고처럼 도구 결과로 싣는다
     findings += pass_through_alerts(state["alerts"], slices, failed_alerts)
     return {"findings": findings, "ledger": coverage_gaps(set(state["covered_cwes"]))}
 
@@ -316,7 +324,7 @@ def run_scan(target, *, design, out, config: AgentConfig, mode: RunMode = RunMod
     state: ScanState = {
         "target": target, "design": list(design), "out": Path(out), "settings": config, "mode": mode,
         "slices_file": slices_file, "rules": list(rules), "previous": previous, "snapshot": None, "scanners": [],
-        "runtime": None, "slices": [], "cases": [], "next_case": 0, "alerts": [], "findings": [], "exit_code": None,
+        "runtime": None, "slices": [], "cases": [], "capped_cases": [], "next_case": 0, "alerts": [], "findings": [], "exit_code": None,
         "error": None, "result": None, "raw_alerts": list(alerts), "ledger": [], "verdicts": [], "covered_cwes": [],
     }
     # 설정으로 켰을 때만 LangSmith로 보낸다. 셸 환경변수만 켜져 있으면 보내지 않는다.

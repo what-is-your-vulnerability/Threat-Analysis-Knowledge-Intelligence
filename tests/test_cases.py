@@ -196,3 +196,11 @@ def test_alerts_by_slice_keeps_only_in_scope_alerts_in_that_slice():
               Slice(slice_id="t", name="t", files=[SliceFile(path="B.java")])]
     grouped = alerts_by_slice([_alert(), _alert(cwe="CWE-918"), _alert(file="C.java")], slices)
     assert list(grouped) == ["s"] and len(grouped["s"]) == 1
+
+
+def test_alert_outside_allowlist_is_not_investigated():
+    slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")])]
+    alerts = [_alert(cwe="CWE-117", rule="log-rule"), _alert(cwe="CWE-78", rule="cmd-rule")]
+    assert build_cases(slices, [], Budget(), alerts=alerts) == [] and alerts_by_slice(alerts, slices) == {}
+    findings = pass_through_alerts(alerts, slices)
+    assert [f.cwe for f in findings] == ["CWE-117", "CWE-78"] and all(f.tool_confirmed for f in findings)
