@@ -103,21 +103,34 @@ def _submit_tool(schema: type[BaseModel]) -> dict:
 
 def _complete_with_tools(role, messages, *, prompt_version, schema, tools, gateway, budget, case_id, sent_files):
     """도구 호출을 한도 안에서 반복한다. submit_result나 JSON 응답이 오면 끝난다."""
+    base = messages
     messages = [*messages, {"role": "user", "content": TOOL_GUIDE}]
     definitions = [*tools.schemas(), _submit_tool(schema)]
     limit = (budget or gateway.config.budget).max_tool_calls
+    explore_effort = gateway.config.tool_reasoning_effort
     used = 0
+    readings: list[str] = []
+    ask = {"prompt_version": prompt_version, "budget": budget, "case_id": case_id, "sent_files": sent_files}
+
+    def final_answer():
+        # 탐색 단계는 추론 없이 돌았으므로, 읽은 내용을 붙여 원래 추론 강도로 최종 답을 다시 받는다.
+        note = wrap_data("TOOL_RESULTS", "\n\n".join(readings) or "(도구로 더 읽은 내용 없음)")
+        final = [*base, {"role": "user", "content": f"{note}\n위 자료까지 반영해 최종 결과를 JSON으로 내라."}]
+        return gateway.complete(role, final, schema=schema, **ask).parsed
+
     while True:
-        response = gateway.complete(role, messages, prompt_version=prompt_version, schema=schema, tools=definitions,
-                                    budget=budget, case_id=case_id, sent_files=sent_files)
+        response = gateway.complete(role, messages, schema=schema, tools=definitions, reasoning_effort=explore_effort,
+                                    **ask)
         if not response.tool_calls:
-            return response.parsed
+            return final_answer() if explore_effort else response.parsed
         messages.append({"role": "assistant", "content": response.content, "tool_calls": [
             {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]}}
             for c in response.tool_calls
         ]})
         for call in response.tool_calls:
             if call["name"] == SUBMIT:
+                if explore_effort:
+                    return final_answer()
                 try:
                     return schema.model_validate_json(call["arguments"])
                 except ValidationError as e:
@@ -126,7 +139,9 @@ def _complete_with_tools(role, messages, *, prompt_version, schema, tools, gatew
                 used += 1
                 if used > limit:
                     raise BudgetExceeded(f"도구 호출 한도 {limit}번 초과")
-                output = wrap_data("TOOL", _call_tool(tools, call))
+                result = _call_tool(tools, call)
+                readings.append(f"{call['name']} {call['arguments']}\n{result}")
+                output = wrap_data("TOOL", result)
             messages.append({"role": "tool", "tool_call_id": call["id"], "content": output})
 
 

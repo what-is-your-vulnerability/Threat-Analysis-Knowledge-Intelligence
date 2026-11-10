@@ -148,3 +148,24 @@ def test_scan_gives_tools_to_investigator(fake, tmp_path):
     fake.responses.extend(json.loads((FIX / "fake_script.json").read_text(encoding="utf-8")))
     run_scan(VULN, design=[FIX / "design.md"], out=tmp_path, config=make_config(fake), rules=load_rules(FIX / "rules.yml"))
     assert "tools" in fake.requests[0] and "tools" not in fake.requests[-1]  # 수정 제안은 도구를 쓰지 않는다
+
+
+def test_tool_reasoning_split_keeps_reasoning_for_final_answer(fake, tmp_path, tools):
+    config = make_config(fake, reasoning_effort="medium", tool_reasoning_effort="none")
+    gateway = LlmGateway(config, tmp_path)
+    fake.responses += [_tool("read_code", path=CONTROLLER, start=35, end=35),
+                       _tool("submit_result", claims=[]),
+                       {"content": json.dumps({"claims": [{"claim": "absent", "statement": "최종"}]})}]
+    result = investigate(CASE, "code", gateway=gateway, tools=tools)
+    first, second, final = fake.requests
+    assert first["reasoning_effort"] == "none" and "tools" in first and second["reasoning_effort"] == "none"
+    assert final["reasoning_effort"] == "medium" and "tools" not in final
+    assert "public void delete" in json.dumps(final["messages"], ensure_ascii=False)
+    assert all(m["role"] in ("system", "user") for m in final["messages"])
+    assert result.claims[0].statement == "최종"
+
+
+def test_without_split_first_submit_is_final(fake, gw, tools):
+    fake.responses += [_tool("submit_result", claims=[])]
+    investigate(CASE, "code", gateway=gw, tools=tools)
+    assert len(fake.requests) == 1
