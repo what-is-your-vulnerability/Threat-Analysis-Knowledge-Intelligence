@@ -40,7 +40,7 @@ from agent.schemas.models import (
     Verdict,
     VerdictState,
 )
-from agent.steps.cases import build_cases, pass_through_alerts, update_ledger
+from agent.steps.cases import alerts_by_slice, build_cases, pass_through_alerts, update_ledger
 from agent.steps.evidence import check_evidence
 from agent.steps.lenses import load_lenses
 from agent.steps.recheck import PROBLEM_STATES, RecheckItem, compare_runs
@@ -108,8 +108,9 @@ def _verdict_trace_outputs(verdicts) -> dict:
 
 
 @traceable(name="조사 항목", run_type="chain", process_inputs=_case_trace_inputs, process_outputs=_verdict_trace_outputs)
-def _run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot, gateway, ledger, tools, lenses) -> list[Verdict]:
-    slice_text = render_slice(slice_, snapshot)
+def _run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot, gateway, ledger, tools, lenses,
+              alerts=()) -> list[Verdict]:
+    slice_text = render_slice(slice_, snapshot, alerts)
     sent = [f.path for f in slice_.files]
     requirement = f"{rule.doc_ref}: {rule.requirement_quote}" if rule and rule.requirement_quote else None
     ask = {"gateway": gateway, "requirement": requirement, "sent_files": sent, "tools": tools}
@@ -302,9 +303,10 @@ def _scan(target, *, design, out, config: AgentConfig, mode: RunMode, slices_fil
         if not any(c.subject_id == rule.rule_id for c in cases):
             result.ledger.append(LedgerCell(subject=rule.rule_id, target="*", state=LedgerState.not_seen,
                                             reason="승인되지 않았거나 맞는 API가 없음"))
+    shown_alerts = alerts_by_slice(alerts, slices)
     for case in cases:
         verdicts = _run_case(case, slice_by_id[case.slice_id], rule_by_id.get(case.subject_id), snapshot, gateway,
-                             result.ledger, tools, lenses)
+                             result.ledger, tools, lenses, shown_alerts.get(case.slice_id, ()))
         for v in verdicts:
             v.manifest_ids = list(gateway.manifest_ids_by_case.get(case.case_id, []))
         result.verdicts += verdicts
