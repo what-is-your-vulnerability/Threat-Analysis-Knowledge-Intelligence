@@ -168,3 +168,34 @@ def test_reasoning_effort_is_sent_when_set(fake, tmp_path):
     _call(_gateway(fake, tmp_path, reasoning_effort="medium"))
     _call(_gateway(fake, tmp_path))
     assert fake.requests[0]["reasoning_effort"] == "medium" and "reasoning_effort" not in fake.requests[1]
+
+
+@pytest.mark.parametrize(("source", "secret"), [
+    ("url: jdbc:oracle:thin:scott/tiger99@db:1521/ORCL", "tiger99"),
+    ('DB_PASS = "hunter22"', "hunter22"),
+    ("SPRING_DATASOURCE_URL=postgresql://app:pa55word@db:5432/app", "pa55word"),
+])
+def test_masks_secrets_anywhere(source, secret):
+    masked = mask_text(source).text
+    assert secret not in masked and len(masked) == len(source) and masking.find_secrets(masked) == []
+
+
+@pytest.mark.parametrize(("path", "source", "secret"), [
+    ("application.properties", "spring.datasource.password=tiger123", "tiger123"),
+    ("src/main/resources/application.yml", "spring:\n  datasource:\n    password: s3cr3t-value\n", "s3cr3t-value"),
+    (".env.local", "CLIENT_SECRET=abcdEFGH1234", "abcdEFGH1234"),
+])
+def test_masks_unquoted_values_in_config_files(path, source, secret):
+    masked = masking.mask_file_text(path, source)
+    assert secret not in masked and len(masked) == len(source)
+
+
+@pytest.mark.parametrize(("path", "source"), [
+    ("application.yml", "password: ${DB_PASSWORD}"),
+    ("A.java", "String password = request.getPassword();"),
+    ("a.ts", "  password: string"),
+    ("a.ts", "this.totpSecret = secret"),
+    ("login.ts", "AND password = '${security.hash(req.body.password)}'"),
+])
+def test_keeps_placeholders_and_code(path, source):
+    assert mask_text(masking.mask_file_text(path, source)).text == source
