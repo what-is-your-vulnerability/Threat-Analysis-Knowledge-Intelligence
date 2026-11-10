@@ -15,6 +15,7 @@ from agent.adapters.repo.local import check_allowed, open_target
 from agent.adapters.scanner.docker import keep_snapshot_alerts, plan_scanners, run_scanner
 from agent.adapters.scanner.sarif import coverage_gaps
 from agent.config import AgentConfig
+from agent.core.tracing import trace_client
 from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
 from agent.llm.roles import investigate, propose_fix, review
 from agent.schemas.models import (
@@ -252,14 +253,17 @@ def _scan_trace_outputs(result: RunResult) -> dict:
 def run_scan(target, *, design, out, config: AgentConfig, mode: RunMode = RunMode.full, slices_file=None, rules=(),
              previous=None, alerts=()) -> RunResult:
     # 설정으로 켰을 때만 LangSmith로 보낸다. 셸 환경변수만 켜져 있으면 보내지 않는다.
-    with tracing_context(enabled=bool(config.langsmith_project), project_name=config.langsmith_project,
-                         tags=["secagent", mode.value]):
-        return _scan(target, design=design, out=out, config=config, mode=mode, slices_file=slices_file, rules=rules,
+    project = config.langsmith_project
+    with tracing_context(enabled=bool(project), project_name=project, tags=["secagent", mode.value],
+                         client=trace_client() if project else None):
+        return _scan(target, design=design, out=out, settings=config, mode=mode, slices_file=slices_file, rules=rules,
                      previous=previous, alerts=alerts)
 
 
 @traceable(name="secagent 검사", run_type="chain", process_inputs=_scan_trace_inputs, process_outputs=_scan_trace_outputs)
-def _scan(target, *, design, out, config: AgentConfig, mode: RunMode, slices_file, rules, previous, alerts) -> RunResult:
+def _scan(target, *, design, out, settings: AgentConfig, mode: RunMode, slices_file, rules, previous, alerts) -> RunResult:
+    # 인자 이름을 config로 쓰면 langsmith가 LangChain 실행 설정으로 오인한다.
+    config = settings
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     for path in design:

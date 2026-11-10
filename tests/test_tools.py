@@ -8,7 +8,7 @@ from agent.adapters.lang.java_index import build_index
 from agent.adapters.lang.mybatis import parse_mappers
 from agent.adapters.lang.spring import extract_spring
 from agent.core.orchestrator import run_scan
-from agent.llm.gateway import BudgetExceeded, LlmGateway
+from agent.llm.gateway import LlmGateway
 from agent.llm.roles import investigate, review
 from agent.schemas.models import Budget, Case, CaseSource, Claim, EvidencePath, ReviewResult
 from agent.steps.cases import load_rules
@@ -94,11 +94,29 @@ def test_bad_submit_is_sent_back(fake, gw, tools):
     assert fake.requests[1]["messages"][-1]["content"].startswith("오류")
 
 
-def test_loop_limit_becomes_budget_exceeded(fake, gw, tools):
-    fake.responses += [_tool("search", pattern="x") for _ in range(20)]
-    with pytest.raises(BudgetExceeded):
-        investigate(CASE, "code", gateway=gw, tools=tools)
-    assert len(fake.requests) == CASE.budget.max_tool_calls + 1
+def test_limit_asks_final_answer_with_readings(fake, gw, tools):
+    limit = CASE.budget.max_tool_calls
+    final = {"claims": [{"claim": "absent", "statement": "읽은 내용으로 판정"}]}
+    fake.responses += [_tool("search", pattern="delete") for _ in range(limit + 1)] + [{"content": json.dumps(final)}]
+    result = investigate(CASE, "code", gateway=gw, tools=tools)
+    last = fake.requests[-1]
+    assert len(fake.requests) == limit + 2 and "tools" not in last
+    assert "<<<DATA TOOL_RESULTS>>>" in json.dumps(last, ensure_ascii=False)
+    assert result.claims[0].statement == "읽은 내용으로 판정"
+
+
+def test_bad_submit_counts_toward_limit(fake, gw, tools):
+    limit = CASE.budget.max_tool_calls
+    bad = _tool("submit_result", claims=[{"claim": "모름"}])
+    fake.responses += [bad for _ in range(limit + 1)] + [{"content": '{"claims": []}'}]
+    assert investigate(CASE, "code", gateway=gw, tools=tools).claims == []
+    assert len(fake.requests) == limit + 2 and "tools" not in fake.requests[-1]
+
+
+def test_high_tool_limit_does_not_hit_recursion_limit(fake, gw, tools):
+    case = CASE.model_copy(update={"budget": Budget(max_tool_calls=30)})
+    fake.responses += [_tool("search", pattern="x") for _ in range(30)] + [_tool("submit_result", claims=[])]
+    assert investigate(case, "code", gateway=gw, tools=tools).claims == [] and len(fake.requests) == 31
 
 
 def test_path_traversal_returns_error_text(tools):

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from conftest import make_config
+from langsmith import Client
 
 from agent.config import AgentConfig
 from agent.core import orchestrator
@@ -75,7 +76,7 @@ def test_scan_disables_tracing_without_project(fake, tmp_path, monkeypatch):
     fake.responses.append({"match": "lens_id별로", "content": '{"claims": []}'})
     orchestrator.run_scan(FIX / "vulnerable", design=[], out=tmp_path, config=make_config(fake),
                           slices_file=FIX / "slices.yml")
-    assert seen[0]["enabled"] is False
+    assert seen[0]["enabled"] is False and seen[0]["client"] is None
 
 
 def test_scan_traces_into_the_configured_project(fake, tmp_path, monkeypatch):
@@ -84,3 +85,4 @@ def test_scan_traces_into_the_configured_project(fake, tmp_path, monkeypatch):
     orchestrator.run_scan(FIX / "vulnerable", design=[], out=tmp_path,
                           config=make_config(fake, langsmith_project="secagent"), slices_file=FIX / "slices.yml")
     assert seen[0]["enabled"] is True and seen[0]["project_name"] == "secagent"
+    assert isinstance(seen[0]["client"], Client)  # 단계 기록을 줄이는 클라이언트로 보낸다
