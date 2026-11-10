@@ -184,3 +184,19 @@ def test_out_of_scope_alert_skips_llm(fake, tmp_path):
     assert not any("SSRF 위험 원문" in json.dumps(q, ensure_ascii=False) for q in fake.requests)
     assert "SSRF 위험 원문" in (tmp_path / "report.html").read_text() and r.findings[0].tool_confirmed
     assert r.exit_code == 1
+
+
+def test_sibling_guard_cannot_refute_missing(fake, tmp_path):
+    # 재검토가 형제 API(suspend)의 @PreAuthorize를 delete의 기각 근거로 내도 누락이 구현 확인으로 바뀌면 안 된다.
+    sibling = {"claim": "implemented", "statement": "관리자 확인이 있다", "checked_value": "hasRole('ADMIN')",
+               "used_value": "hasRole('ADMIN')", "root_symbol": "MemberController.delete",
+               "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 28, "end": 37,
+                         "quote": "@PreAuthorize(\"hasRole('ADMIN')\")\n    public void suspend(@PathVariable long id) {",
+                         "role": "root_control"}]}
+    fake.responses += [
+        {"match": "재검토한다", "content": json.dumps({"result": "refuted", "reason": "있다", "evidence": sibling})},
+        *json.loads((FIX / "fake_script.json").read_text(encoding="utf-8"))[2:],
+    ]
+    r = _scan(fake, tmp_path)
+    rule_verdicts = [v for v in r.verdicts if v.case_id == r.cases[0].case_id]
+    assert rule_verdicts[0].state != VerdictState.implemented and r.exit_code == 1

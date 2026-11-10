@@ -23,7 +23,11 @@ public class MemberController {
 }
 """
 FILE = "MemberController.java"
-GOOD_FLOW = Flow(flow_id="f1", method="DELETE", path="/m", middleware_complete=True)
+# 근거 확인 시험용 흐름: 핸들러 범위가 파일 전체라 위치 제한에 걸리지 않는다.
+GOOD_FLOW = Flow(flow_id="f1", method="DELETE", path="/m", middleware_complete=True,
+                 handler_file="MemberController.java", handler_start=1, handler_end=18)
+DELETE_FLOW = Flow(flow_id="DELETE /m", method="DELETE", path="/m", middleware_complete=True,
+                   handler_file="MemberController.java", handler_start=9, handler_end=12)
 
 
 @pytest.fixture
@@ -103,7 +107,7 @@ def test_annotation_string_is_code(snapshot):
 
 def test_language_without_parser_skips_comment_check(snapshot):
     p = implemented(hop("hasRole", 1, 1, file="mapper.xml"), checked="hasRole", used="hasRole")
-    assert check_evidence(p, snapshot, [GOOD_FLOW]).passed
+    assert check_evidence(p, snapshot, [GOOD_FLOW.model_copy(update={"guard_files": ["mapper.xml"]})]).passed
 
 
 def test_quote_from_masked_text_matches(snapshot):
@@ -157,3 +161,43 @@ def test_defect_path_needs_entry_to_outcome(snapshot):
 def test_not_applicable_needs_basis(snapshot):
     p = EvidencePath(claim=Claim.not_applicable, statement="공개 API", basis=[])
     assert CheckFailure.no_basis in fails(check_evidence(p, snapshot, [GOOD_FLOW]))
+
+
+def test_implemented_outside_flow_fails(snapshot):
+    # 형제 API(suspend)의 @PreAuthorize를 delete의 구현 근거로 인용
+    check = check_evidence(implemented(hop("hasRole('ADMIN')", 4, 4)), snapshot, [DELETE_FLOW])
+    assert CheckFailure.off_flow in check.failures
+
+
+def test_implemented_inside_handler_passes(snapshot):
+    p = implemented(hop("service.delete(id);", 10, 10), checked="service.delete(id)", used="service.delete(id)")
+    assert check_evidence(p, snapshot, [DELETE_FLOW]).passed
+
+
+def test_implemented_on_call_path_passes(snapshot):
+    path_hop = hop("void a() { service.save(id); }", 15, 15)
+    flow = DELETE_FLOW.model_copy(update={"hops": [path_hop.model_copy(update={"end": 15})]})
+    p = implemented(hop("void a() { service.save(id); }", 15, 15), checked="service.save", used="service.save")
+    assert check_evidence(p, snapshot, [flow]).passed
+
+
+def test_implemented_in_guard_file_passes(snapshot):
+    flow = DELETE_FLOW.model_copy(update={"handler_start": 10, "handler_end": 10, "guard_files": [FILE]})
+    assert check_evidence(implemented(hop("hasRole('ADMIN')", 4, 4)), snapshot, [flow]).passed
+
+
+def test_flow_without_location_cannot_confirm_implemented(snapshot):
+    bare = Flow(flow_id="f", method="DELETE", path="/m", middleware_complete=True)
+    assert CheckFailure.off_flow in check_evidence(implemented(hop("hasRole('ADMIN')", 4, 4)), snapshot, [bare]).failures
+    assert CheckFailure.off_flow in check_evidence(implemented(hop("hasRole('ADMIN')", 4, 4)), snapshot, []).failures
+
+
+def test_not_applicable_needs_code_quote(snapshot):
+    p = EvidencePath(claim=Claim.not_applicable, statement="조회 전용", basis=["설계"])
+    assert not check_evidence(p, snapshot, [GOOD_FLOW]).passed
+
+
+def test_not_applicable_from_comment_is_rejected(snapshot):
+    p = EvidencePath(claim=Claim.not_applicable, statement="게이트웨이", basis=["주석"],
+                     hops=[hop("관리자 확인은 게이트웨이에 있음", 3, 3)])
+    assert CheckFailure.quote_in_comment in check_evidence(p, snapshot, [GOOD_FLOW]).failures

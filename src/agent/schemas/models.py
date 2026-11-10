@@ -99,6 +99,7 @@ class CheckFailure(str, Enum):
     unresolved_links = "unresolved_links"
     no_basis = "no_basis"
     path_broken = "path_broken"
+    off_flow = "off_flow"  # 구현 근거가 조사 대상 API의 흐름 밖에 있다
 
 
 class Disposition(str, Enum):
@@ -185,6 +186,11 @@ class Flow(BaseModel):
     guards: list[str] = Field(default_factory=list)
     middleware_complete: bool = False
     unresolved: list[str] = Field(default_factory=list)
+    # 구현 근거가 이 흐름 안에 있는지 확인할 때 쓰는 위치. 모르면 구현 확인을 내지 않는다.
+    handler_file: str | None = None
+    handler_start: int | None = None
+    handler_end: int | None = None
+    guard_files: list[str] = Field(default_factory=list)
 
 
 class SliceFile(BaseModel):
