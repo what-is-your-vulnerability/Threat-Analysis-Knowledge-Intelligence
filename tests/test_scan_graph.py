@@ -90,3 +90,17 @@ def test_scope_failure_skips_to_report(fake, tmp_path, monkeypatch):
     r = run_scan(tmp_path / "empty", design=[], out=tmp_path / "o", config=make_config(fake, scanners=[_spec("a")]))
     assert r.exit_code == 3 and r.error == "분석할 파일이 없습니다." and (tmp_path / "o" / "report.json").exists()
     assert fake.requests == []
+
+
+def test_scanner_exception_is_not_seen_not_a_crash(fake, tmp_path, monkeypatch):
+    def scan(spec, snapshot, out):
+        if spec.name == "a":
+            raise KeyError("runs")
+        return ScanOutcome(Capability.supported, alerts=[_alert("b")])
+
+    monkeypatch.setattr(orchestrator, "run_scanner", scan)
+    fake.responses.append(NO_ISSUE)
+    r = run_scan(_target(tmp_path), design=[], out=tmp_path / "o", config=make_config(fake, scanners=[_spec("a"), _spec("b")]))
+    assert (tmp_path / "o" / "report.json").exists() and r.exit_code == 1
+    assert [f.statement for f in r.findings if f.tool_confirmed] == ["b 경고"]
+    assert any(c.subject == "scanner:a" and c.state == LedgerState.not_seen and "KeyError" in c.reason for c in r.ledger)

@@ -21,7 +21,7 @@ from agent.adapters.lang.mybatis import parse_mappers
 from agent.adapters.lang.spring import extract_spring
 from agent.adapters.repo.local import check_allowed, open_target
 from agent.adapters.scanner.docker import keep_snapshot_alerts, plan_scanners, run_scanner
-from agent.adapters.scanner.sarif import coverage_gaps
+from agent.adapters.scanner.sarif import ScanOutcome, coverage_gaps
 from agent.config import AgentConfig
 from agent.core.case_graph import LLM_ERRORS, ScanRuntime, run_case
 from agent.core.tracing import trace_client
@@ -203,7 +203,10 @@ def _after_prepare(state: ScanState):
 
 def _scanner(task: dict) -> dict:
     spec = task["spec"]
-    outcome = run_scanner(spec, task["snapshot"], task["out"])
+    try:
+        outcome = run_scanner(spec, task["snapshot"], task["out"])
+    except Exception as e:  # noqa: BLE001 - 도구 하나의 처리 오류가 다른 도구 결과와 검사 전체를 버리게 하지 않는다
+        outcome = ScanOutcome(Capability.failed, errors=[f"스캐너 처리 오류: {type(e).__name__}: {e}"])
     cells = [] if outcome.status == Capability.supported else [LedgerCell(
         subject=f"scanner:{spec.name}", target="*", state=LedgerState.not_seen,
         reason="; ".join(outcome.errors) or outcome.status.value)]
