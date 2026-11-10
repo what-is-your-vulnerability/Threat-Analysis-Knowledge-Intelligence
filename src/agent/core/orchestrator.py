@@ -41,6 +41,7 @@ from agent.steps.report import write_report
 from agent.steps.scope import scan_scope
 from agent.steps.slices import build_slices, fallback_slices, load_slices, render_slice
 from agent.steps.verdict import decide, group_findings, root_file
+from agent.tools.readonly import ReadOnlyTools
 
 LLM_ERRORS = (LlmCallError, LlmFormatError, BudgetExceeded, SecretLeft)
 QUOTE_FAILURES = {CheckFailure.quote_not_found, CheckFailure.quote_ambiguous}
@@ -77,10 +78,10 @@ def _quote_feedback(claims: list[EvidencePath], checks: list[EvidenceCheck]) -> 
     return "이전 응답의 인용을 코드에서 찾지 못했다. 코드 문장을 그대로 복사하고 줄 번호를 맞춰 다시 내라:\n" + "\n".join(wrong)
 
 
-def _review_claim(claim, check, slice_text, snapshot, flows, gateway, case, sent) -> Review:
+def _review_claim(claim, check, slice_text, snapshot, flows, gateway, case, sent, tools) -> Review:
     fixed = claim.model_copy(update={"hops": check.fixed_hops})
     try:
-        result = review(fixed, slice_text, gateway=gateway, case_id=case.case_id, sent_files=sent)
+        result = review(fixed, slice_text, gateway=gateway, case_id=case.case_id, sent_files=sent, tools=tools)
     except LLM_ERRORS as e:
         return Review(result=ReviewResult.not_proven, reason=f"재검토 호출 실패: {e}")
     if result.result == ReviewResult.refuted and result.evidence:
@@ -88,11 +89,11 @@ def _review_claim(claim, check, slice_text, snapshot, flows, gateway, case, sent
     return result
 
 
-def _run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot, gateway, ledger) -> list[Verdict]:
+def _run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot, gateway, ledger, tools) -> list[Verdict]:
     slice_text = render_slice(slice_, snapshot)
     sent = [f.path for f in slice_.files]
     requirement = f"{rule.doc_ref}: {rule.requirement_quote}" if rule and rule.requirement_quote else None
-    ask = {"gateway": gateway, "requirement": requirement, "sent_files": sent}
+    ask = {"gateway": gateway, "requirement": requirement, "sent_files": sent, "tools": tools}
     try:
         result = investigate(case, slice_text, **ask)
         checks = [check_evidence(c, snapshot, _flows_for(case, slice_, c)) for c in result.claims]
@@ -112,7 +113,7 @@ def _run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot, ga
         check = check_evidence(claim, snapshot, flows)
         reviews = []
         if check.passed and claim.claim in (Claim.absent, Claim.defect):
-            reviews.append(_review_claim(claim, check, slice_text, snapshot, flows, gateway, case, sent))
+            reviews.append(_review_claim(claim, check, slice_text, snapshot, flows, gateway, case, sent, tools))
         verdicts.append(decide(case.case_id, claim, check, reviews, slice_.code_hash))
     return verdicts
 
@@ -137,11 +138,7 @@ def _add_fixes(findings, verdicts, cases, slices, snapshot, gateway) -> None:
             finding.fix = None  # 제안이 없어도 판정은 그대로다. 리포트에는 수정 방법이 비어 있게 나온다.
 
 
-def _auto_slices(snapshot: Snapshot, design, result: RunResult) -> list[Slice] | None:
-    index = build_index(snapshot)
-    mappers = parse_mappers(snapshot)
-    spring = extract_spring(snapshot, index)
-    snapshot.capabilities |= {f"spring.{k}": v for k, v in spring.capabilities.items()}
+def _auto_slices(snapshot: Snapshot, design, result: RunResult, index, mappers, spring) -> list[Slice] | None:
     result.ledger += [LedgerCell(subject="매퍼 읽기", target="*", state=LedgerState.not_seen, reason=e) for e in mappers.errors]
     state = spring.capabilities["entrypoints"]
     if state == Capability.failed:
@@ -191,10 +188,15 @@ def run_scan(
         return _finish(result, out, 3, "분석할 파일이 없습니다.")
 
     gateway = LlmGateway(config, out)
+    index = build_index(snapshot)
+    mappers = parse_mappers(snapshot)
+    spring = extract_spring(snapshot, index)
+    snapshot.capabilities |= {f"spring.{k}": v for k, v in spring.capabilities.items()}
+    tools = ReadOnlyTools(snapshot, index, mappers, spring.entrypoints, design)
     if slices_file is not None:
         slices = load_slices(Path(slices_file), snapshot)
     else:
-        slices = _auto_slices(snapshot, design, result)
+        slices = _auto_slices(snapshot, design, result, index, mappers, spring)
         if slices is None:
             return _finish(result, out, 3, "Spring 프로젝트인데 컨트롤러를 찾지 못했습니다.")
     result.slices = slices
@@ -208,7 +210,7 @@ def run_scan(
                                             reason="승인되지 않았거나 맞는 API가 없음"))
     for case in cases:
         verdicts = _run_case(case, slice_by_id[case.slice_id], rule_by_id.get(case.subject_id), snapshot, gateway,
-                             result.ledger)
+                             result.ledger, tools)
         for v in verdicts:
             v.manifest_ids = list(gateway.manifest_ids_by_case.get(case.case_id, []))
         result.verdicts += verdicts
