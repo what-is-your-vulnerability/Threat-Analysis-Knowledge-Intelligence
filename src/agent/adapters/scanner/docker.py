@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -126,6 +127,8 @@ def docker_args(spec: ScannerSpec, snapshot: Snapshot, out: Path, name: str) -> 
             "--pull", spec.pull]
     if spec.platform:
         args += ["--platform", spec.platform]
+    if hasattr(os, "getuid"):  # 이미지 사용자와 상관없이 붙인 폴더에 쓰고, 결과 파일이 root 소유로 남지 않게 한다
+        args += ["--user", f"{os.getuid()}:{os.getgid()}"]
     args += ["--tmpfs", "/tmp", "-e", "HOME=/tmp", "-w", "/src",
              *_bind(snapshot.root, "/src", readonly=True), *_hidden(snapshot), *_bind(scan_dir, "/out"),
              *_bind(scan_dir / f"{spec.name}-work", "/work")]

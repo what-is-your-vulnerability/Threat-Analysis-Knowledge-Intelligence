@@ -1,3 +1,4 @@
+import os
 import subprocess
 from pathlib import Path
 
@@ -44,6 +45,13 @@ def test_docker_args_isolate_and_expand(tmp_path):
     assert f"type=bind,src={FIX / 'app'},dst=/src,readonly" in args and "/out/semgrep.sarif" in args
     assert args[args.index("--config") + 1] == "/rules/0.yml" and "{rules}" not in args and "-v" not in args
     assert "semgrep/semgrep:1.183.0" in args and "--metrics=off" in args
+
+
+def test_docker_args_run_as_host_user(tmp_path, monkeypatch):
+    args = docker_args(_semgrep(), _snapshot(), tmp_path, "n")
+    assert args[args.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
+    monkeypatch.delattr(os, "getuid")  # Windows에는 uid가 없다
+    assert "--user" not in docker_args(_semgrep(), _snapshot(), tmp_path, "n")
 
 
 def test_mount_path_with_comma_is_quoted(tmp_path):
