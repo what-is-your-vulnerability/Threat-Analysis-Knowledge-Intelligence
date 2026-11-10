@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent.adapters.lang.java_index import build_index
+from agent.adapters.lang.mybatis import parse_mappers
+from agent.adapters.lang.spring import extract_spring
 from agent.adapters.repo.local import check_allowed, open_target
 from agent.config import AgentConfig
 from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
@@ -36,7 +39,7 @@ from agent.steps.evidence import check_evidence
 from agent.steps.recheck import RecheckItem, compare_runs
 from agent.steps.report import write_report
 from agent.steps.scope import scan_scope
-from agent.steps.slices import load_slices, render_slice
+from agent.steps.slices import build_slices, fallback_slices, load_slices, render_slice
 from agent.steps.verdict import decide, group_findings, root_file
 
 LLM_ERRORS = (LlmCallError, LlmFormatError, BudgetExceeded, SecretLeft)
@@ -134,6 +137,22 @@ def _add_fixes(findings, verdicts, cases, slices, snapshot, gateway) -> None:
             finding.fix = None  # 제안이 없어도 판정은 그대로다. 리포트에는 수정 방법이 비어 있게 나온다.
 
 
+def _auto_slices(snapshot: Snapshot, design, result: RunResult) -> list[Slice] | None:
+    index = build_index(snapshot)
+    mappers = parse_mappers(snapshot)
+    spring = extract_spring(snapshot, index)
+    snapshot.capabilities |= {f"spring.{k}": v for k, v in spring.capabilities.items()}
+    result.ledger += [LedgerCell(subject="매퍼 읽기", target="*", state=LedgerState.not_seen, reason=e) for e in mappers.errors]
+    state = spring.capabilities["entrypoints"]
+    if state == Capability.failed:
+        return None
+    if state == Capability.unsupported:
+        result.ledger.append(LedgerCell(subject="프레임워크", target="*", state=LedgerState.not_seen,
+                                        reason="알아보는 프레임워크가 없어 진입점을 뽑지 못하고 폴더 단위로 나눔"))
+        return fallback_slices(snapshot)
+    return build_slices(snapshot, spring.entrypoints, index, mappers, design_docs=design)
+
+
 def _exit_code(result: RunResult) -> int:
     if any(f.outcome == Outcome.block for f in result.findings):
         return 2
@@ -170,11 +189,15 @@ def run_scan(
     result.snapshot = snapshot = scan_scope(open_target(Path(target), out / "_target"))
     if snapshot.status == Capability.failed:
         return _finish(result, out, 3, "분석할 파일이 없습니다.")
-    if slices_file is None:
-        return _finish(result, out, 3, "기능 묶음 입력이 없습니다.")
 
     gateway = LlmGateway(config, out)
-    result.slices = slices = load_slices(Path(slices_file), snapshot)
+    if slices_file is not None:
+        slices = load_slices(Path(slices_file), snapshot)
+    else:
+        slices = _auto_slices(snapshot, design, result)
+        if slices is None:
+            return _finish(result, out, 3, "Spring 프로젝트인데 컨트롤러를 찾지 못했습니다.")
+    result.slices = slices
     result.cases = cases = build_cases(slices, list(rules), config.budget)
     slice_by_id = {s.slice_id: s for s in slices}
     rule_by_id = {r.rule_id: r for r in rules}
