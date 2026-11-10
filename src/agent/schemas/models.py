@@ -247,6 +247,7 @@ class Review(BaseModel):
     result: ReviewResult
     reason: str = ""
     evidence: EvidencePath | None = None
+    evidence_check: EvidenceCheck | None = None  # 기각 근거를 프로그램이 확인한 결과
 
 
 class Verdict(BaseModel):
