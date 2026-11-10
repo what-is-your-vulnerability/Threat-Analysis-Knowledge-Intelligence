@@ -31,10 +31,10 @@ public class MemberController {
         memberService.suspend(id);
     }
 
-    // 수정: 삭제에도 관리자 확인을 적용
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public void delete(@PathVariable long id) {
+        // 수정: 삭제에도 관리자 확인을 적용
         memberService.delete(id);
     }
 }

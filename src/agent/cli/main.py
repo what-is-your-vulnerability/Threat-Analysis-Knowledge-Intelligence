@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+import time
 from pathlib import Path
 
 import yaml
@@ -11,7 +13,7 @@ import yaml
 from agent.adapters.lang.java_index import build_index
 from agent.adapters.lang.spring import extract_spring
 from agent.adapters.repo.local import ForbiddenPathError, check_allowed, open_target
-from agent.config import ConfigError, load_config
+from agent.config import AgentConfig, ConfigError, load_config
 from agent.core.orchestrator import RunResult, run_scan
 from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
 from agent.llm.roles import derive_rules, load_templates
@@ -19,10 +21,20 @@ from agent.schemas.models import RuleStatus, RunMode, SecurityRule
 from agent.steps.cases import load_rules
 from agent.steps.scope import scan_scope
 
+POLL_SECONDS = 2
+
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="secagent", description="보안 통제 구현 여부를 근거와 함께 진단한다.")
     commands = parser.add_subparsers(dest="command", required=True)
+    api = commands.add_parser("api")
+    api.add_argument("--port", type=int, default=8000)
+    api.add_argument("--config", type=Path)
+    worker = commands.add_parser("worker")
+    worker.add_argument("--once", action="store_true")
+    worker.add_argument("--config", type=Path)
+    commands.add_parser("openapi")
+    commands.add_parser("db-upgrade")
     rules = commands.add_parser("rules").add_subparsers(dest="rules_command", required=True)
     derive = rules.add_parser("derive")
     derive.add_argument("target", type=Path)
@@ -93,9 +105,39 @@ def _approve(args) -> int:
     return 0
 
 
+def _service(args) -> int:
+    # 서비스 의존성은 CLI 검사에 필요 없으므로 여기서 읽는다.
+    from agent.api.app import API_HOST, create_app
+    from agent.store.repo import make_session_factory, run_next, upgrade_database
+
+    if args.command == "db-upgrade":
+        upgrade_database()
+        return 0
+    if args.command == "openapi":
+        print(json.dumps(create_app(None, AgentConfig()).openapi(), ensure_ascii=False, indent=1))
+        return 0
+    config = load_config(args.config)
+    sessions = make_session_factory()
+    if args.command == "api":
+        import uvicorn
+
+        uvicorn.run(create_app(sessions, config), host=API_HOST, port=args.port)
+        return 0
+    while True:
+        run = run_next(sessions, config, Path("runs"))
+        if run is not None:
+            print(f"scan {run.id}: {run.status} (종료 코드 {run.exit_code})")
+        if args.once:
+            return 0
+        if run is None:
+            time.sleep(POLL_SECONDS)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.command in ("api", "worker", "openapi", "db-upgrade"):
+            return _service(args)
         if args.command == "rules":
             return _derive(args) if args.rules_command == "derive" else _approve(args)
         result = run_scan(
