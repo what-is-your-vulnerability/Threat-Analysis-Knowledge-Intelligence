@@ -184,3 +184,24 @@ def test_spring_without_controllers_exits_3(tmp_path, fake):
     (tmp_path / "t" / "pom.xml").write_text("<project>spring</project>\n")
     r = run_scan(tmp_path / "t", design=[], out=tmp_path / "o", config=make_config(fake))
     assert r.exit_code == 3 and "컨트롤러" in r.error
+
+
+def test_trimmed_call_code_makes_flow_unresolved():
+    _, slices = slices_of(FIX / "vulnerable", max_lines=25)
+    delete = next(f for s in slices for f in s.flows if f.flow_id == "DELETE /api/v1/admin/members/{id}")
+    assert any("한도로 뺀 코드" in u for u in delete.unresolved)
+
+
+def test_same_class_name_in_two_packages_is_not_mixed(tmp_path):
+    (tmp_path / "pom.xml").write_text("<project>spring</project>\n")
+    for pkg in ("a", "b"):
+        (tmp_path / pkg).mkdir()
+        (tmp_path / pkg / "Repo.java").write_text(f"package {pkg};\npublic class Repo {{ public void remove() {{ int {pkg}Only = 1; }} }}\n")
+        (tmp_path / pkg / "MemberController.java").write_text(
+            f'package {pkg};\n@RestController class MemberController {{\n  private Repo repo;\n'
+            f'  @DeleteMapping("/{pkg}/m") void delete() {{ repo.remove(); }}\n}}\n')
+    _, slices = slices_of(tmp_path)
+    by_name = {s.name: s for s in slices}
+    assert {f.path for f in by_name["a"].files if "MemberController" in f.path} == {"a/MemberController.java"}
+    flow = by_name["a"].flows[0]
+    assert flow.handler_file == "a/MemberController.java" and any("repo.remove" in u for u in flow.unresolved)

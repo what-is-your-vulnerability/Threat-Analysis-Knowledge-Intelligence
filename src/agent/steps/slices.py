@@ -157,7 +157,7 @@ def _follow_calls(entry: EntryPoint, snapshot, index: JavaIndex, mappers: Mapper
         method, role, certainty = queue.pop(0)
         reach.methods.append(method)
         reach.hops.append(_method_hop(snapshot, method, role, certainty))
-        owner = index.cls(method.class_name)
+        owner = method.owner
         if owner.kind == "interface":
             statement = mappers.get((f"{owner.package}.{owner.name}" if owner.package else owner.name, method.name))
             if statement:
@@ -258,7 +258,7 @@ def _collect_files(reaches: list[_Reach], snapshot, index: JavaIndex) -> _FileSe
                     files.add(guard.file, priority=PRIORITY_GUARD)
         for position, method in enumerate(reach.methods):
             priority = PRIORITY_HANDLER if position == 0 else PRIORITY_CALLEE
-            owner = index.cls(method.class_name)
+            owner = method.owner
             _class_outline(files, owner, priority)
             files.add(method.file, method.start, method.end, priority=priority)
             for name in _signature_types(method):
@@ -342,16 +342,21 @@ def _related(reaches: list[_Reach], others: list[_Reach], index: JavaIndex, tabl
 
 
 def _trim(files: _FileSet, max_lines: int) -> tuple[list[str], bool]:
-    """한도를 넘으면 우선순위가 낮은 파일부터 빼고 무엇을 뺐는지 돌려준다."""
+    """한도를 넘으면 우선순위가 낮은 파일부터 빼고 뺀 파일 경로를 돌려준다."""
     dropped = []
     guard_dropped = False
     for path in sorted(files.ranges, key=lambda p: -files.priority[p]):
         if files.total() <= max_lines or files.priority[path] == PRIORITY_HANDLER:
             continue
         guard_dropped = guard_dropped or files.priority[path] == PRIORITY_GUARD
-        dropped.append(f"한도를 넘어 뺌: {path}")
+        dropped.append(path)
         del files.ranges[path]
     return dropped, guard_dropped
+
+
+def _reach_files(reach: _Reach) -> set[str]:
+    return ({m.file for m in reach.methods} | {s.file for s in reach.statements}
+            | {path for s in reach.statements for path, _, _ in s.fragments})
 
 
 def _guard_files(entry: EntryPoint, index: JavaIndex) -> list[str]:
@@ -375,12 +380,15 @@ def locate_handlers(slices: list[Slice], index: JavaIndex) -> None:
 
 def _make_slice(name, reaches, table, requirements, snapshot, index, others, max_lines) -> Slice:
     files = _collect_files(reaches, snapshot, index)
-    truncated, guard_dropped = _trim(files, max_lines)
+    dropped, guard_dropped = _trim(files, max_lines)
+    truncated = [f"한도를 넘어 뺌: {path}" for path in dropped]
     flows = [
         Flow(flow_id=flow_id(r.entry.method, r.entry.path_template), method=r.entry.method, path=r.entry.path_template,
              handler_symbol=r.entry.handler_symbol, hops=r.hops, guards=r.entry.effective_guards,
              middleware_complete=r.entry.middleware_complete and not guard_dropped,
-             unresolved=[*r.unresolved, *([r.entry.unresolved_reason] if r.entry.unresolved_reason else [])],
+             # 한도로 뺀 코드를 지나는 흐름은 LLM이 다 보지 못했으므로 "없다" 주장을 입증할 수 없다.
+             unresolved=[*r.unresolved, *([r.entry.unresolved_reason] if r.entry.unresolved_reason else []),
+                         *(f"한도로 뺀 코드: {path}" for path in dropped if path in _reach_files(r))],
              handler_file=r.entry.handler_file, handler_start=r.entry.handler_start, handler_end=r.entry.handler_end,
              guard_files=_guard_files(r.entry, index))
         for r in reaches
