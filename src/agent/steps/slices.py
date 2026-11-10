@@ -135,6 +135,7 @@ class _Reach:
     statements: list[MapperStatement] = field(default_factory=list)
     hops: list[Hop] = field(default_factory=list)
     unresolved: list[str] = field(default_factory=list)
+    symbols: dict[str, str] = field(default_factory=dict)
 
 
 def _line_of(snapshot: Snapshot, path: str, line: int) -> str:
@@ -162,7 +163,9 @@ def _follow_calls(entry: EntryPoint, snapshot, index: JavaIndex, mappers: Mapper
             break
         method, role, certainty = queue.pop(0)
         reach.methods.append(method)
-        reach.hops.append(_method_hop(snapshot, method, role, certainty))
+        hop = _method_hop(snapshot, method, role, certainty)
+        reach.hops.append(hop)
+        reach.symbols[f"{hop.file}:{hop.start}"] = method.symbol
         owner = method.owner
         if owner.kind == "interface":
             statement = mappers.get((f"{owner.package}.{owner.name}" if owner.package else owner.name, method.name))
@@ -390,7 +393,7 @@ def _make_slice(name, reaches, table, requirements, snapshot, index, others, max
     truncated = [f"한도를 넘어 뺌: {path}" for path in dropped]
     flows = [
         Flow(flow_id=flow_id(r.entry.method, r.entry.path_template), method=r.entry.method, path=r.entry.path_template,
-             handler_symbol=r.entry.handler_symbol, hops=r.hops, guards=r.entry.effective_guards,
+             handler_symbol=r.entry.handler_symbol, hops=r.hops, symbols=r.symbols, guards=r.entry.effective_guards,
              middleware_complete=r.entry.middleware_complete and not guard_dropped,
              # 한도로 뺀 코드를 지나는 흐름은 LLM이 다 보지 못했으므로 "없다" 주장을 입증할 수 없다.
              unresolved=[*r.unresolved, *([r.entry.unresolved_reason] if r.entry.unresolved_reason else []),
