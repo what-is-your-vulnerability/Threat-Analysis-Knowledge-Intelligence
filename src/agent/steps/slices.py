@@ -12,6 +12,7 @@ import yaml
 from agent.adapters.lang.java_index import JavaClass, JavaIndex, JavaMethod
 from agent.adapters.lang.mybatis import MapperIndex, MapperStatement
 from agent.adapters.lang.treesitter import walk
+from agent.llm.masking import mask_file_text
 from agent.schemas.models import (
     Capability,
     Certainty,
@@ -42,7 +43,8 @@ def flow_id(method: str, path: str) -> str:
 
 
 def _read_lines(snapshot: Snapshot, path: str) -> list[str]:
-    return (snapshot.root / path).read_text(encoding="utf-8", errors="replace").split("\n")
+    text = (snapshot.root / path).read_text(encoding="utf-8", errors="replace")
+    return mask_file_text(path, text).split("\n")
 
 
 def _grep_ranges(lines: list[str], pattern: str) -> list[tuple[int, int]]:

@@ -169,3 +169,15 @@ def test_without_split_first_submit_is_final(fake, gw, tools):
     fake.responses += [_tool("submit_result", claims=[])]
     investigate(CASE, "code", gateway=gw, tools=tools)
     assert len(fake.requests) == 1
+
+
+def test_config_secret_is_masked_in_tools_and_slices(tmp_path):
+    from agent.schemas.models import Slice, SliceFile
+    from agent.steps.slices import render_slice
+
+    (tmp_path / "application.properties").write_text("spring.datasource.password=tiger123\n")
+    snapshot = scan_scope(tmp_path)
+    assert "tiger123" not in ReadOnlyTools(snapshot).call("read_code", {"path": "application.properties", "start": 1, "end": 1})
+    assert "tiger123" not in ReadOnlyTools(snapshot).call("search", {"pattern": "datasource"})
+    one = Slice(slice_id="s", name="s", files=[SliceFile(path="application.properties")])
+    assert "tiger123" not in render_slice(one, snapshot)

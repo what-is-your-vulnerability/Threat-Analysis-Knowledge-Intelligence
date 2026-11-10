@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 
 from agent.adapters.lang.treesitter import parse_java, walk
-from agent.llm.masking import mask_text
+from agent.llm.masking import mask_file_text, mask_text
 from agent.schemas.models import CheckFailure, Claim, EvidenceCheck, EvidencePath, Flow, Hop, Role, Snapshot
 
 NON_CODE_TYPES = {"line_comment", "block_comment", "string_literal"}
@@ -24,13 +24,14 @@ def _find_all(haystack: str, needle: str) -> list[int]:
     return found
 
 
-def _candidates(source: str, quote: str) -> list[tuple[int, int, int]]:
+def _candidates(source: str, quote: str, path: str) -> list[tuple[int, int, int]]:
     """인용이 나오는 곳을 (시작 줄, 끝 줄, 정규화 본문 위치)로 돌려준다. LLM은 가린 본문을 보므로 둘 다 찾는다."""
     needle = _normalize(quote).strip()
     if not needle:
         return []
     found = {}
-    for text in (_normalize(source), _normalize(mask_text(source).text)):
+    masked = mask_text(mask_file_text(path, source)).text
+    for text in (_normalize(source), _normalize(masked)):
         for at in _find_all(text, needle):
             start = text.count("\n", 0, at) + 1
             found[(start, at)] = (start, start + needle.count("\n"), at)
@@ -38,7 +39,7 @@ def _candidates(source: str, quote: str) -> list[tuple[int, int, int]]:
 
 
 def _locate(hop: Hop, source: str) -> tuple[Hop | None, CheckFailure | None]:
-    candidates = _candidates(source, hop.quote)
+    candidates = _candidates(source, hop.quote, hop.file)
     if not candidates:
         return None, CheckFailure.quote_not_found
     in_range = [c for c in candidates if hop.start <= c[0] and c[1] <= hop.end]

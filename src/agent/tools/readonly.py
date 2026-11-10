@@ -6,6 +6,8 @@ import json
 import re
 from pathlib import Path
 
+from agent.llm.masking import mask_file_text
+
 MAX_READ_LINES = 400
 MAX_SEARCH_HITS = 50
 HEADING_RE = re.compile(r"^(#+)\s+(.*)$")
@@ -53,7 +55,8 @@ class ReadOnlyTools:
             return f"오류: 잘못된 인자 ({e})"
 
     def _lines(self, path: str) -> list[str]:
-        return (self.snapshot.root / path).read_text(encoding="utf-8", errors="replace").split("\n")
+        text = (self.snapshot.root / path).read_text(encoding="utf-8", errors="replace")
+        return mask_file_text(path, text).split("\n")
 
     def _tool_read_code(self, path, start, end) -> str:
         if path not in self.listed:
