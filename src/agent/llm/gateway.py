@@ -87,6 +87,7 @@ class LlmGateway:
         budget: Budget | None = None,
         case_id: str | None = None,
         sent_files: list[str] | None = None,
+        reasoning_effort: str | None = None,
     ) -> LlmResponse:
         budget = budget or self.config.budget
         model = self.config.models.get(role)
@@ -113,8 +114,9 @@ class LlmGateway:
             raise BudgetExceeded(entry.error)
 
         kwargs: dict = {"model": model, "messages": masked, "max_completion_tokens": budget.max_output_tokens}
-        if self.config.reasoning_effort:
-            kwargs["reasoning_effort"] = self.config.reasoning_effort
+        effort = reasoning_effort or self.config.reasoning_effort
+        if effort:
+            kwargs["reasoning_effort"] = effort
         if tools:
             kwargs["tools"] = tools
         if schema:

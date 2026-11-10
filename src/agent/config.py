@@ -25,6 +25,8 @@ class AgentConfig(BaseModel):
     models: dict[str, str | None] = Field(default_factory=lambda: dict.fromkeys(ROLES))
     budget: Budget = Field(default_factory=Budget)
     reasoning_effort: str | None = None
+    # 도구와 추론 강도를 함께 받지 않는 모델용. 정하면 탐색은 이 값으로 하고, 최종 답은 도구 없이 reasoning_effort로 받는다.
+    tool_reasoning_effort: str | None = None
     semgrep: SemgrepConfig = Field(default_factory=SemgrepConfig)
 
 
