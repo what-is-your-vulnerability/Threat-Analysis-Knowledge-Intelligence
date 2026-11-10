@@ -2,24 +2,17 @@
 
 from __future__ import annotations
 
-import json
-import re
 import subprocess
 import uuid
-from dataclasses import dataclass, field
 from pathlib import Path
 
-import yaml
 from pydantic import BaseModel
 
-from agent.schemas.models import Capability, Certainty, Fact, LedgerCell, LedgerState, Snapshot
+from agent.adapters.scanner.sarif import ScanOutcome, parse_sarif
+from agent.schemas.models import Capability, Snapshot
 
-CWE_RE = re.compile(r"CWE-\d+")
 OUTPUT_NAME = "semgrep.sarif"
 BUILTIN_RULES = Path(__file__).resolve().parents[4] / "rules" / "semgrep"
-# 탐지 범위 밖 유형. AI가 판정하지 않고, 규칙이 없으면 못 본 범위로 알린다.
-OUT_OF_SCOPE_CWES = {"CWE-918": "SSRF", "CWE-22": "경로 조작", "CWE-611": "XXE", "CWE-502": "역직렬화",
-                     "CWE-352": "CSRF", "CWE-400": "서비스 거부"}
 
 
 class SemgrepConfig(BaseModel):
@@ -30,13 +23,6 @@ class SemgrepConfig(BaseModel):
 
     def rule_files(self) -> list[Path]:
         return [*sorted(BUILTIN_RULES.glob("*.yml")), *self.rules]
-
-
-@dataclass
-class ScanOutcome:
-    status: Capability
-    alerts: list[Fact] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
 
 
 def docker_args(snapshot: Snapshot, configs: list[Path], out: Path, image: str, name: str = "secagent-semgrep") -> list[str]:
@@ -51,41 +37,6 @@ def docker_args(snapshot: Snapshot, configs: list[Path], out: Path, image: str, 
         rules += ["--config", f"/rules/{number}.yml"]
     return [*args, image, "semgrep", "scan", "--metrics=off", "--disable-version-check", "--sarif",
             "--output", f"/out/{OUTPUT_NAME}", *rules, "."]
-
-
-def _relative(uri: str) -> str:
-    return uri.removeprefix("file://").removeprefix("/src/").removeprefix("./")
-
-
-def parse_sarif(path: Path) -> ScanOutcome:
-    try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as e:
-        return ScanOutcome(Capability.failed, errors=[f"결과 파일을 읽지 못함: {type(e).__name__}"])
-    alerts: list[Fact] = []
-    errors: list[str] = []
-    for run in data.get("runs", []):
-        driver = run.get("tool", {}).get("driver", {})
-        rules = {r.get("id"): r for r in driver.get("rules", [])}
-        for invocation in run.get("invocations", []):
-            if invocation.get("executionSuccessful") is False:
-                errors.append("도구가 실패로 끝남")
-            errors += [n.get("message", {}).get("text", "") for n in invocation.get("toolExecutionNotifications", [])
-                       if n.get("level") == "error"]
-        for result in run.get("results", []):
-            tags = rules.get(result.get("ruleId"), {}).get("properties", {}).get("tags", [])
-            cwe = next((m.group(0) for tag in tags if (m := CWE_RE.search(str(tag)))), None)
-            for location in result.get("locations", [])[:1]:
-                physical = location.get("physicalLocation", {})
-                region = physical.get("region", {})
-                alerts.append(Fact(
-                    kind="alert", file=_relative(physical.get("artifactLocation", {}).get("uri", "")),
-                    line=region.get("startLine"), symbol=result.get("ruleId"), tool="semgrep",
-                    tool_version=driver.get("semanticVersion"), certainty=Certainty.tool_confirmed,
-                    detail={"rule": result.get("ruleId"), "cwe": cwe, "message": result.get("message", {}).get("text", ""),
-                            "snippet": region.get("snippet", {}).get("text", "")},
-                ))
-    return ScanOutcome(Capability.partial if errors else Capability.supported, alerts, errors)
 
 
 def _remove_container(name: str) -> None:
@@ -107,27 +58,10 @@ def run_semgrep(snapshot: Snapshot, config: SemgrepConfig, out: Path) -> ScanOut
     except subprocess.TimeoutExpired:
         _remove_container(name)
         return ScanOutcome(Capability.partial, errors=[f"시간 제한 {config.timeout_seconds}초를 넘겨 스캐너를 멈춤"])
-    outcome = parse_sarif(out / OUTPUT_NAME)
+    outcome = parse_sarif(out / OUTPUT_NAME, "semgrep")
     if finished.returncode not in (0, 1):
         message = f"스캐너 종료 코드 {finished.returncode}: {finished.stderr[-300:]}"
         status = Capability.failed if outcome.status == Capability.failed else Capability.partial
         return ScanOutcome(status, outcome.alerts, [message, *outcome.errors])
     return outcome
 
-
-def _rule_cwes(path: Path) -> set[str]:
-    try:
-        data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
-        return set()
-    return {m for rule in data.get("rules", []) for m in CWE_RE.findall(str(rule.get("metadata", {}).get("cwe", "")))}
-
-
-def coverage_gaps(configs: list[Path]) -> list[LedgerCell]:
-    """규칙이 없는 범위 밖 유형을 알린다. 탐지 범위 밖이라 경고로 치지 않고 deferred로 남긴다."""
-    covered = {cwe for path in configs for cwe in _rule_cwes(path)}
-    cells = [LedgerCell(subject=f"{name} ({cwe})", target="*", state=LedgerState.deferred, reason="이 유형은 검사 규칙 없음")
-             for cwe, name in OUT_OF_SCOPE_CWES.items() if cwe not in covered]
-    cells.append(LedgerCell(subject="의존성 CVE", target="*", state=LedgerState.deferred,
-                            reason="이 유형은 검사 규칙 없음(라이브러리 점검은 다음 단계)"))
-    return cells

@@ -3,17 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from agent.adapters.scanner.semgrep import (
-    ScanOutcome,
-    SemgrepConfig,
-    coverage_gaps,
-    docker_args,
-    parse_sarif,
-    run_semgrep,
-)
+from agent.adapters.scanner.sarif import ScanOutcome
+from agent.adapters.scanner.semgrep import SemgrepConfig, docker_args, run_semgrep
 from agent.config import RULES_DIR, AgentConfig
 from agent.core.orchestrator import run_scan
-from agent.schemas.models import Capability, Certainty, LedgerState
+from agent.schemas.models import Capability, LedgerState
 from agent.steps.scope import scan_scope
 
 FIX = Path(__file__).parent / "fixtures" / "semgrep"
@@ -31,28 +25,6 @@ def test_docker_args_block_network(tmp_path):
     assert args[args.index("--network") + 1] == "none" and args[args.index("--memory") + 1] == "4g"
     assert f"{FIX / 'app'}:/src:ro" in joined and IMAGE in args and "--metrics=off" in args
     assert "--config" in args and args[args.index("--config") + 1].startswith("/rules/")
-
-
-def test_parse_results_to_facts():
-    outcome = parse_sarif(FIX / "results.sarif")
-    assert outcome.status == Capability.supported and outcome.errors == []
-    first, second = outcome.alerts
-    assert first.kind == "alert" and first.file == "app/UserDao.java" and first.line == 10 and first.tool == "semgrep"
-    assert first.detail["cwe"] == "CWE-89" and first.detail["rule"] == "rules.java-string-concat-sql"
-    assert first.detail["snippet"] == "statement.executeQuery(x)" and first.certainty == Certainty.tool_confirmed
-    assert first.tool_version == "1.183.0"
-    assert second.detail["cwe"] is None and second.file == "app/A.java"
-
-
-def test_rule_errors_are_partial_not_zero():
-    outcome = parse_sarif(FIX / "rule_error.sarif")
-    assert outcome.status == Capability.partial and outcome.alerts == [] and "Invalid rule schema" in outcome.errors[0]
-
-
-def test_missing_or_broken_sarif_is_failed(tmp_path):
-    assert parse_sarif(tmp_path / "none.sarif").status == Capability.failed
-    (tmp_path / "bad.sarif").write_text("{")
-    assert parse_sarif(tmp_path / "bad.sarif").status == Capability.failed
 
 
 def _config(tmp_path=None, **kw):
@@ -81,15 +53,6 @@ def test_tool_error_exit_code_without_output_is_failed(monkeypatch, tmp_path):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 2, "", "boom"))
     outcome = run_semgrep(_snapshot(), _config(), tmp_path)
     assert outcome.status == Capability.failed and "boom" in outcome.errors[0]
-
-
-def test_out_of_scope_without_rule_is_coverage_gap(tmp_path):
-    rule = tmp_path / "r.yml"
-    rule.write_text('rules:\n  - id: a\n    metadata: {cwe: ["CWE-22: path"]}\n')
-    cells = coverage_gaps([rule])
-    subjects = " ".join(c.subject for c in cells)
-    assert "CWE-918" in subjects and "CWE-22" not in subjects and "의존성" in subjects
-    assert all(c.state == LedgerState.deferred and c.reason for c in cells)
 
 
 def test_scan_without_scanner_reports_gaps_but_keeps_exit_code(fake, tmp_path):
@@ -130,4 +93,4 @@ def test_real_container_finds_fixture(tmp_path):
     outcome = run_semgrep(_snapshot(), SemgrepConfig(enabled=True, image=IMAGE, timeout_seconds=300), tmp_path)
     assert outcome.status == Capability.supported, outcome.errors
     assert [(a.file, a.line, a.detail["cwe"]) for a in outcome.alerts] == [("UserDao.java", 10, "CWE-89")]
-    assert (tmp_path / "semgrep.sarif").exists()
+    assert (tmp_path / "semgrep.sarif").exists() and "CWE-89" in outcome.covered_cwes
