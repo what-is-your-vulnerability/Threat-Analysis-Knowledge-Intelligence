@@ -15,6 +15,10 @@ RUN apt-get update \
  && rm /tmp/codeql.tar.gz \
  && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
+# 번들의 미리 컴파일한 쿼리(.codeql/precompiled/*.qlx)가 uid 1001 전용(0600)이라 --user로 돌리면 못 읽고 다시 컴파일하다 메모리가 모자란다.
+# 다운로드 층을 다시 받지 않게 따로 둔다.
+RUN find /opt/codeql ! -perm -o=r -exec chmod a+r {} +
+
 ENV PATH="/opt/codeql:${PATH}"
 RUN useradd --create-home --uid 10001 scanner
 USER scanner

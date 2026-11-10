@@ -87,6 +87,8 @@ uv run pytest -m codeql      # 이미지가 있을 때만
 
 - 라이선스: GitHub Advanced Security 없이는 OSI 오픈소스 코드와 학술 연구·시연에만 쓸 수 있다. 사내 비공개 코드에 쓰기 전에 라이선스를 확인한다.
 - Apple Silicon에서는 amd64 에뮬레이션으로 돌아 느리다. 대상에 Java 파일이 없으면 건너뛴다(기록표 `scanner:codeql` deferred).
+- 메모리: 컨테이너 6g, CodeQL `--ram=4096`, `--threads=4`(Docker VM 8GiB 기준). 2026-11-10 이전에 빌드한 이미지는 미리 컴파일한 쿼리를 읽지 못해 메모리 부족으로 끝나므로 다시 빌드한다.
+- 빌드 없는 모드는 네트워크 없이 의존성(예: Spring)을 못 받아 추출 오류가 나면 `partial`(기록표 `not_seen`)로 남는다.
 
 ## 키와 LangSmith 설정
 
