@@ -192,6 +192,8 @@ class Flow(BaseModel):
     handler_start: int | None = None
     handler_end: int | None = None
     guard_files: list[str] = Field(default_factory=list)
+    # "<file>:<start>" -> 메서드 이름. 그림용이고 LLM에 보내지 않는다(Hop은 LLM 출력 스키마라 늘리지 않는다).
+    symbols: dict[str, str] = Field(default_factory=dict)
 
 
 class SliceFile(BaseModel):

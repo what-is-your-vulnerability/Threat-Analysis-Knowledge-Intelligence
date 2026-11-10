@@ -40,6 +40,12 @@ uv run secagent recheck TARGET --previous runs/a --design 설계.md --rules rule
 
 종료 코드: 0 통과, 1 경고, 2 차단, 3 실행 실패. 결과는 `--out` 폴더의 `report.html`, `report.json`, `results.sarif`, `ledger.json`이다.
 
+`report.json`(API `GET /api/v1/scans/{scan_id}/report`도 같다)의 `paths`는 이슈별 취약 경로다. 항목은 `finding_id`·`cwe`·`state`·`statement`·`steps`이고 코드 원문은 없다.
+- 단계: `file`, `start`·`end`(줄), `symbol`(메서드 이름, MyBatis XML 문장 등 모르면 `null`), `role`, `source`.
+- `role`: `entrypoint`·`propagation`·`root_control`·`sink`·`outcome`·`expected_control`.
+- `source`: `flow` 프로그램이 따라간 호출 경로, `evidence` AI 근거, `tool` 도구가 확인한 데이터 흐름.
+- 한 이슈가 여러 API 흐름에 걸리면 첫 흐름만 쓴다(다른 API 경로를 이어 그리지 않으려고).
+
 로컬 API와 worker:
 
 ```bash

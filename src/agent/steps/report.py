@@ -8,6 +8,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from agent.schemas.models import Capability, CaseSource, VerdictState
+from agent.steps.paths import finding_paths
 from agent.steps.sarif import to_sarif
 
 STATE_LABELS = {"implemented": "구현 확인", "missing_suspected": "누락 의심", "unverified": "검증 불충분",
@@ -55,6 +56,7 @@ def write_report(result, out: Path) -> None:
         "not_read": [n.model_dump(mode="json") for n in snapshot.not_read] if snapshot else [],
         "slices": [{"name": s.name, "code_hash": s.code_hash, "truncated": s.truncated,
                     "capability": s.capability.value} for s in result.slices],
+        "paths": finding_paths(result),
     }
     (out / "report.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     (out / "ledger.json").write_text(json.dumps(data["ledger"], ensure_ascii=False, indent=1), encoding="utf-8")
