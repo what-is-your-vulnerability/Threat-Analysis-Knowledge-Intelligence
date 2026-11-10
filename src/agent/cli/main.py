@@ -150,6 +150,9 @@ def main(argv: list[str] | None = None) -> int:
             SecretLeft) as e:
         print(f"실행 실패: {e}", file=sys.stderr)
         return 3
+    except Exception as e:  # noqa: BLE001 - 예상 못 한 실패도 CI에서 경고(1)로 읽히지 않게 실행 실패로 끝낸다.
+        print(f"실행 실패: {type(e).__name__}: {e}", file=sys.stderr)
+        return 3
     _print_summary(result)
     return result.exit_code
 

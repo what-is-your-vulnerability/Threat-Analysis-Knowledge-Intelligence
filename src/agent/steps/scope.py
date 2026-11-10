@@ -24,18 +24,25 @@ def _read_commit(root: Path) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
-def _walk(directory: Path, root: Path, files: list[FileEntry], not_read: list[NotRead]) -> None:
+def _is_result_folder(path: Path, exclude) -> bool:
+    # 이 도구가 대상 폴더 안에 쓴 결과는 다음 검사의 분석 대상이나 근거가 되면 안 된다.
+    return path.resolve() in exclude or ((path / "report.json").exists() and (path / "ledger.json").exists())
+
+
+def _walk(directory: Path, root: Path, files: list[FileEntry], not_read: list[NotRead], exclude=()) -> None:
     for entry in sorted(directory.iterdir(), key=lambda p: p.name):
         rel = entry.relative_to(root).as_posix()
         if entry.is_symlink():
             not_read.append(NotRead(path=rel, reason="심볼릭 링크"))
+        elif entry.is_dir() and _is_result_folder(entry, exclude):
+            not_read.append(NotRead(path=rel, reason="검사 결과 폴더"))
         elif entry.is_dir():
             if entry.name in FORBIDDEN_CHILD_NAMES:
                 not_read.append(NotRead(path=rel, reason="금지 폴더"))
             elif entry.name in EXCLUDED_DIRS:
                 not_read.append(NotRead(path=rel, reason="제외 폴더"))
             else:
-                _walk(entry, root, files, not_read)
+                _walk(entry, root, files, not_read, exclude)
         else:
             language = LANGUAGES.get(entry.suffix.lower())
             if language is None:
@@ -49,11 +56,11 @@ def _walk(directory: Path, root: Path, files: list[FileEntry], not_read: list[No
             files.append(FileEntry(path=rel, sha256=hashlib.sha256(data).hexdigest(), language=language, lines=lines))
 
 
-def scan_scope(root: Path) -> Snapshot:
+def scan_scope(root: Path, exclude=()) -> Snapshot:
     root = Path(root).resolve()
     files: list[FileEntry] = []
     not_read: list[NotRead] = []
-    _walk(root, root, files, not_read)
+    _walk(root, root, files, not_read, tuple(exclude))
     listing = "\n".join(sorted(f"{f.path}\x00{f.sha256}" for f in files))
     return Snapshot(
         root=root,

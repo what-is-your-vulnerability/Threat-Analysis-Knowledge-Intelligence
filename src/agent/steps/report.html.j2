@@ -40,7 +40,7 @@ td, th { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: lef
   <p>확인 방법: {{ f.fix.check_scenario }}</p>
   {% endif %}
 </div>
-{% else %}<p>보고할 이슈가 없습니다.</p>{% endfor %}
+{% else %}<p>누락 의심·검증 불충분 이슈가 없습니다. 못 본 범위를 함께 확인하세요.</p>{% endfor %}
 
 {% if recheck %}
 <h2>재검사 비교</h2>

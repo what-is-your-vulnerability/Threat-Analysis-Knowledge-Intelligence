@@ -200,3 +200,40 @@ def test_sibling_guard_cannot_refute_missing(fake, tmp_path):
     r = _scan(fake, tmp_path)
     rule_verdicts = [v for v in r.verdicts if v.case_id == r.cases[0].case_id]
     assert rule_verdicts[0].state != VerdictState.implemented and r.exit_code == 1
+
+
+def test_unexpected_error_exits_3(tmp_path, capsys, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("예상 못 한 오류")
+
+    monkeypatch.setattr("agent.cli.main.run_scan", broken)
+    code = main(["scan", str(VULN), "--out", str(tmp_path / "a"), "--slices", str(SLICES)])
+    assert code == 3 and "예상 못 한 오류" in capsys.readouterr().err
+
+
+def test_all_llm_failures_are_not_shown_as_zero_issues(fake, tmp_path):
+    r = _scan(fake, tmp_path)  # 모의 LLM이 응답을 주지 않아 모든 호출이 실패한다
+    html = (tmp_path / "report.html").read_text()
+    assert r.findings and all(f.state == VerdictState.unverified for f in r.findings)
+    assert "보고할 이슈가 없습니다" not in html and "이슈 0건" not in html
+
+
+def test_failed_alert_investigation_keeps_the_scanner_finding(fake, tmp_path):
+    alert = Fact(kind="alert", file="src/main/java/demo/member/MemberService.java", line=22, tool="semgrep",
+                 detail={"cwe": "CWE-89", "rule": "sql", "message": "SQL 조립 경고 원문"})
+    r = run_scan(VULN, design=[], out=tmp_path, config=make_config(fake), slices_file=SLICES, alerts=[alert])
+    assert any(f.tool_confirmed and f.statement == "SQL 조립 경고 원문" for f in r.findings)
+
+
+def test_out_inside_target_is_not_analyzed(scripted, tmp_path):
+    import shutil
+
+    target = tmp_path / "app"
+    shutil.copytree(VULN, target)
+    first = run_scan(target, design=[DESIGN], out=target / "runs" / "a", config=make_config(scripted),
+                     slices_file=SLICES, rules=RULES)
+    assert not any(f.path.startswith("runs/") for f in first.snapshot.files)
+    second = run_scan(target, design=[DESIGN], out=target / "runs" / "b", config=make_config(scripted),
+                      slices_file=SLICES, rules=RULES)
+    assert not any(f.path.startswith("runs/") for f in second.snapshot.files)
+    assert {"runs/a", "runs/b"} <= {n.path for n in second.snapshot.not_read}

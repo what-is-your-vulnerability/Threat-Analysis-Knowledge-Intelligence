@@ -51,7 +51,7 @@ class ReadOnlyTools:
             return f"오류: 없는 도구 {name}"
         try:
             return handler(**args)
-        except TypeError as e:
+        except (TypeError, ValueError) as e:
             return f"오류: 잘못된 인자 ({e})"
 
     def _lines(self, path: str) -> list[str]:
