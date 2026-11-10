@@ -46,7 +46,7 @@ Semgrep은 `agent.yml`의 `semgrep.enabled: true`로 켠다. Docker에서 네트
 
 ```bash
 cp .env.example .env    # OPENAI_API_KEY, LANGSMITH_API_KEY를 채우고
-                        # LangSmith 기록을 보려면 SECAGENT_LANGSMITH_PROJECT=secagent 줄의 주석을 푼다
+                        # LangSmith 기록을 보려면 SECAGENT_LANGSMITH_PROJECT=taki 줄의 주석을 푼다
 scripts/demo.sh         # 또는 secagent scan ...
 ```
 
