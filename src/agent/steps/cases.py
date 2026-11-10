@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 
+from agent.adapters.scanner.semgrep import OUT_OF_SCOPE_CWES
 from agent.schemas.models import (
     Budget,
     Case,
@@ -32,9 +33,6 @@ from agent.schemas.models import (
 from agent.steps.lenses import render_questions
 
 QUESTION_SUBJECT = "lenses"
-# 탐지 범위 밖 유형. AI가 판정하지 않고 도구 결과를 그대로 리포트에 싣는다.
-OUT_OF_SCOPE_CWES = {"CWE-918": "SSRF", "CWE-22": "경로 조작", "CWE-611": "XXE", "CWE-502": "역직렬화",
-                     "CWE-352": "CSRF", "CWE-400": "서비스 거부"}
 
 
 def load_rules(path: Path) -> list[SecurityRule]:
