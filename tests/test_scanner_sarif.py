@@ -72,3 +72,10 @@ def test_null_results_sarif_is_not_a_crash(tmp_path):
         outcome = parse_sarif(path, "t")
         assert outcome.alerts == [] and outcome.status == status, name
         assert outcome.errors if status != Capability.supported else not outcome.errors, name
+
+
+def test_percent_encoded_uri_is_decoded(tmp_path):
+    result = {"ruleId": "r", "locations": [{"physicalLocation": {"artifactLocation": {"uri": "file:///src/my%20dir/A.java"},
+                                                                 "region": {"startLine": 3}}}]}
+    (tmp_path / "a.sarif").write_text(json.dumps({"runs": [{"tool": {"driver": {"name": "t"}}, "results": [result]}]}))
+    assert parse_sarif(tmp_path / "a.sarif", "t").alerts[0].file == "my dir/A.java"

@@ -6,6 +6,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import unquote
 
 from agent.schemas.models import Capability, Certainty, Fact, LedgerCell, LedgerState
 
@@ -47,7 +48,7 @@ def _rule_cwes(rule: dict) -> list[str]:
 
 
 def _relative(uri: str) -> str:
-    return uri.removeprefix("file://").removeprefix("/src/").removeprefix("./")
+    return unquote(uri).removeprefix("file://").removeprefix("/src/").removeprefix("./")
 
 
 def _where(location: dict) -> tuple[str, dict]:
