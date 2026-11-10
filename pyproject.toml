@@ -34,13 +34,14 @@ packages = ["src/agent"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-# 컨테이너와 DB가 필요한 시험은 -m docker, -m postgres로 따로 돌린다.
-addopts = "-m 'not docker and not postgres'"
+# 컨테이너와 DB가 필요한 시험은 -m docker, -m postgres, -m codeql로 따로 돌린다.
+addopts = "-m 'not docker and not postgres and not codeql'"
 # langsmith 패키지가 자기 내부 모듈을 불러올 때 내는 경고다. 우리 코드와 무관하다.
 filterwarnings = ["ignore:langsmith.wrappers._openai_agents is deprecated:DeprecationWarning"]
 markers = [
   "docker: 실제 컨테이너가 필요한 시험",
   "postgres: 로컬 PostgreSQL이 필요한 시험",
+  "codeql: 로컬에서 빌드한 CodeQL 이미지가 필요한 시험",
 ]
 
 [tool.ruff]
