@@ -5,12 +5,13 @@ image: secagent-codeql:2.27.4
 pull: never
 platform: linux/amd64
 languages: [java]
-memory: 8g
+# 컨테이너는 Docker VM 메모리(8GiB 기기에서 약 7.75GiB)보다 낮게, --ram(MB)은 컨테이너보다 2GiB 낮게 둔다.
+memory: 6g
 timeout_seconds: 1800
 command:
   - sh
   - -c
   - >-
-    codeql database create /work/db --language=java --build-mode=none --source-root=/src --threads=0
+    codeql database create /work/db --language=java --build-mode=none --source-root=/src --threads=4 --ram=4096
     && codeql database analyze /work/db codeql/java-queries:codeql-suites/java-security-extended.qls
-    --format=sarif-latest --threads=0 --output={sarif}
+    --format=sarif-latest --threads=4 --ram=4096 --output={sarif}

@@ -217,7 +217,9 @@ def test_codeql_definition_never_pulls_and_needs_java(tmp_path):
     args = docker_args(spec, _snapshot(), tmp_path, "n")
     assert args[args.index("--pull") + 1] == "never" and args[args.index("--platform") + 1] == "linux/amd64"
     assert spec.languages == ["java"] and spec.rules == [] and "--output=/out/codeql.sarif" in args[-1]
-    assert args[args.index("--memory") + 1] == "8g"
+    # Docker VM(약 7.75GiB) 안에서 끝나도록: 컨테이너 6g, CodeQL --ram은 그보다 낮게, 스레드는 고정
+    assert args[args.index("--memory") + 1] == "6g"
+    assert args[-1].count("--ram=4096") == 2 and args[-1].count("--threads=4") == 2 and "--threads=0" not in args[-1]
 
 
 @pytest.mark.codeql
