@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import openai
+from langsmith.wrappers import wrap_openai
 from pydantic import BaseModel, ValidationError
 
 from agent.config import AgentConfig, ConfigError
@@ -68,7 +69,10 @@ class LlmGateway:
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.manifest_ids_by_case: dict[str, list[str]] = {}
-        self._client = openai.OpenAI(base_url=config.base_url, api_key=_api_key(config.base_url), max_retries=0)
+        client = openai.OpenAI(base_url=config.base_url, api_key=_api_key(config.base_url), max_retries=0)
+        # 설정으로 켰을 때만 감싼다. 감싼 클라이언트는 가린 뒤의 메시지만 받는다.
+        self._traced = bool(config.langsmith_project)
+        self._client = wrap_openai(client) if self._traced else client
 
     def _record(self, entry: ManifestEntry) -> None:
         if entry.case_id:
@@ -155,7 +159,11 @@ class LlmGateway:
 
     def _send(self, kwargs: dict, schema, budget: Budget, entry: ManifestEntry) -> LlmResponse:
         try:
-            raw = self._client.chat.completions.create(timeout=budget.max_seconds, **kwargs)
+            extra = {"langsmith_extra": {
+                "name": f"{entry.role} {entry.prompt_version}", "tags": [entry.role],
+                "metadata": {"case_id": entry.case_id, "prompt_version": entry.prompt_version, "manifest_id": entry.manifest_id},
+            }} if self._traced else {}
+            raw = self._client.chat.completions.create(timeout=budget.max_seconds, **kwargs, **extra)
         except openai.OpenAIError as e:
             raise LlmCallError(f"LLM 호출 실패: {type(e).__name__}") from e
 

@@ -21,6 +21,7 @@ if [ "${1:-}" = "--fake" ]; then
   esac
   export LLM_BASE_URL="$URL"
   unset OPENAI_API_KEY LLM_API_KEY
+  export SECAGENT_LANGSMITH_PROJECT=  # 모의 실행은 LangSmith로 보내지 않는다(.env보다 먼저 정해 둔다)
   CONFIG=(--config tests/fake.yml)
 fi
 

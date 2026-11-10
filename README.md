@@ -40,6 +40,22 @@ uv run secagent openapi > deploy/openapi.json
 
 Semgrep은 `agent.yml`의 `semgrep.enabled: true`로 켠다. Docker에서 네트워크 없이 돈다.
 
+## 키와 LangSmith 설정
+
+키는 `agent/.env`에 둔다(`.env.example`을 복사, 커밋하지 않음). 셸에 이미 있는 값이 먼저다.
+
+```bash
+cp .env.example .env    # OPENAI_API_KEY, LANGSMITH_API_KEY를 채우고
+                        # SECAGENT_LANGSMITH_PROJECT=taki 줄이 있으면 LangSmith로 기록을 보낸다. 끄려면 지운다
+scripts/demo.sh         # 또는 secagent scan ...
+```
+
+LangSmith는 `SECAGENT_LANGSMITH_PROJECT`(또는 `agent.yml`의 `langsmith_project`)를 적었을 때만 보낸다.
+다른 프로젝트용으로 흔히 켜 두는 `LANGSMITH_PROJECT`·`LANGSMITH_TRACING`만으로는 보내지 않고, `scripts/demo.sh --fake`도 보내지 않는다.
+기록 단위는 검사 1번 → 조사 항목 → LLM 호출(역할·프롬프트 버전·토큰)이다.
+LLM 호출에는 비밀값을 가린 뒤의 메시지와 응답이 남고, 검사·조사 항목 단계에는 코드 원문 없이 ID·질문·판정만 남는다.
+코드가 LangSmith 서버에도 저장되므로 비공개 평가 자료(정본, TEST)를 검사할 때는 끄고 돌린다.
+
 ## 시험
 
 ```bash
