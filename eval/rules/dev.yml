@@ -1,0 +1,479 @@
+# designs/dev/*.md에서 만든 실험용 규칙. 실험을 위해 일괄 승인했고 사람 검토 전이다(잠정).
+- rule_id: R1
+  title: 공개 상품 API에서 로그인 여부와 관계없이 등록·변경·삭제 요청을 거부한다.
+  requirement_quote: 상품 등록·변경·삭제 요청은 로그인 여부와 관계없이 거부한다.
+  doc_ref: products.md#7. 업무 불변조건
+  stride:
+  - T
+  - E
+  category: 2
+  cwe: CWE-862
+  standard_ref: 8.1.1
+  applies_to:
+  - POST /api/Products
+  - PUT /api/Products/:id
+  - DELETE /api/Products/:id
+  status: approved
+  version: 1
+  out_of_standard: false
+- rule_id: R2
+  title: 상품 목록 조회 과정에서 상품 정보를 변경하지 않는다.
+  requirement_quote: 조회 과정에서 상품 정보가 변경되어서는 안 된다.
+  doc_ref: products.md#상품 목록 조회
+  stride:
+  - T
+  category: 6
+  cwe: CWE-352
+  standard_ref: null
+  applies_to:
+  - GET /api/Products
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R3
+  title: 존재하지 않는 상품 조회에 존재하지 않음을 나타내는 응답을 반환한다.
+  requirement_quote: 상품이 존재하지 않으면 존재하지 않음을 나타내는 응답을 반환한다.
+  doc_ref: products.md#단일 상품 조회
+  stride:
+  - I
+  category: 6
+  cwe: CWE-754
+  standard_ref: null
+  applies_to:
+  - GET /api/Products/:id
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R4
+  title: 잘못되었거나 존재하지 않는 상품 식별자에 다른 상품의 정보를 반환하지 않는다.
+  requirement_quote: 잘못된 상품 식별자나 존재하지 않는 상품 요청은 다른 상품의 정보를 반환하지 않는다.
+  doc_ref: products.md#7. 업무 불변조건
+  stride:
+  - I
+  category: 6
+  cwe: CWE-20
+  standard_ref: null
+  applies_to:
+  - GET /api/Products/:id
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R5
+  title: 상품 설명을 표시할 때 스크립트와 이벤트 처리 코드가 실행되지 않도록 한다.
+  requirement_quote: 상품 설명에 제한적으로 허용된 표시 형식이 포함될 수 있지만, 스크립트나 이벤트 처리 코드가 실행되어서는 안
+    된다.
+  doc_ref: products.md#5. 데이터 처리 흐름
+  stride:
+  - E
+  category: 8
+  cwe: CWE-79
+  standard_ref: 1.3.1
+  applies_to:
+  - GET /api/Products
+  - GET /api/Products/:id
+  status: approved
+  version: 1
+  out_of_standard: false
+- rule_id: R6
+  title: 상품 설명을 표시할 때 프런트엔드의 기본 콘텐츠 처리 과정을 우회하지 않는다.
+  requirement_quote: 상품 설명을 표시하기 위해 프런트엔드의 기본 콘텐츠 처리 과정을 임의로 우회해서는 안 된다.
+  doc_ref: products.md#7. 업무 불변조건
+  stride:
+  - E
+  category: 8
+  cwe: CWE-79
+  standard_ref: null
+  applies_to:
+  - GET /api/Products
+  - GET /api/Products/:id
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R7
+  title: 상품 조회 시 설명 원본이 다른 상품이나 전역 상태에 영향을 주지 않도록 한다.
+  requirement_quote: 상품 조회 과정에서 상품 설명의 원본 값이 다른 상품이나 전역 상태에 영향을 주어서는 안 된다.
+  doc_ref: products.md#7. 업무 불변조건
+  stride:
+  - T
+  category: 6
+  cwe: CWE-664
+  standard_ref: null
+  applies_to:
+  - GET /api/Products
+  - GET /api/Products/:id
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R8
+  title: 공개 회원가입 계정의 초기 역할을 일반 고객으로 설정한다.
+  requirement_quote: 공개 회원가입으로 생성되는 모든 계정의 초기 역할은 일반 고객이다.
+  doc_ref: registration.md#7. 업무 불변조건
+  stride:
+  - E
+  category: 2
+  cwe: CWE-269
+  standard_ref: null
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R9
+  title: 회원가입 요청의 역할 값으로 계정 역할을 설정하지 않는다.
+  requirement_quote: 요청에 역할 값이 포함되어도 해당 값으로 계정 역할을 설정하지 않는다.
+  doc_ref: registration.md#7. 업무 불변조건
+  stride:
+  - E
+  category: 5
+  cwe: CWE-915
+  standard_ref: 4.2.1
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: false
+- rule_id: R10
+  title: 회원가입에서 서버가 사용하기로 정한 요청 속성만 처리한다.
+  requirement_quote: 요청에 그 밖의 속성이 포함될 수 있으나, 서버가 회원가입에 사용하기로 정한 속성만 처리한다.
+  doc_ref: registration.md#신규 사용자 등록
+  stride:
+  - T
+  - E
+  category: 5
+  cwe: CWE-915
+  standard_ref: 4.2.1
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: false
+- rule_id: R11
+  title: 회원가입 필수 값이 누락되면 계정을 생성하지 않는다.
+  requirement_quote: 등록 요청에서 필수 값이 누락되면 계정을 생성하지 않는다.
+  doc_ref: registration.md#7. 업무 불변조건
+  stride:
+  - T
+  category: 5
+  cwe: CWE-20
+  standard_ref: 2.1.1
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: false
+- rule_id: R12
+  title: 이메일과 비밀번호가 비어 있거나 공백뿐이면 계정을 생성하지 않는다.
+  requirement_quote: 이메일과 비밀번호가 빈 문자열이거나 공백으로만 구성되면 계정을 생성하지 않는다.
+  doc_ref: registration.md#7. 업무 불변조건
+  stride:
+  - T
+  category: 5
+  cwe: CWE-20
+  standard_ref: 2.1.1
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: false
+- rule_id: R13
+  title: 유효하지 않은 이메일 형식으로 계정을 생성하지 않는다.
+  requirement_quote: 이메일 형식이 유효하지 않으면 계정을 생성하지 않는다.
+  doc_ref: registration.md#7. 업무 불변조건
+  stride:
+  - T
+  category: 5
+  cwe: CWE-20
+  standard_ref: 2.1.1
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: false
+- rule_id: R14
+  title: 이메일 앞뒤 공백은 제거하고 비밀번호는 제출된 원문 그대로 처리한다.
+  requirement_quote: 서버는 이메일 앞뒤의 불필요한 공백을 제거한다. 비밀번호는 제출된 원문 그대로 다룬다.
+  doc_ref: registration.md#5. 데이터 처리 흐름
+  stride:
+  - T
+  category: 6
+  cwe: CWE-20
+  standard_ref: null
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R15
+  title: 비밀번호와 확인값을 원문 그대로 비교하고 다르면 계정을 생성하지 않는다.
+  requirement_quote: 비밀번호와 비밀번호 확인값은 원문 그대로 비교하며, 일치하지 않으면 계정을 생성하지 않는다.
+  doc_ref: registration.md#7. 업무 불변조건
+  stride:
+  - T
+  category: 6
+  cwe: CWE-20
+  standard_ref: null
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R16
+  title: 회원가입 입력 검증이 실패하면 사용자와 지갑을 생성하지 않는다.
+  requirement_quote: 입력 검증에 실패한 요청은 사용자와 지갑을 생성하기 전에 종료한다.
+  doc_ref: registration.md#5. 데이터 처리 흐름
+  stride:
+  - T
+  category: 6
+  cwe: CWE-20
+  standard_ref: null
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R17
+  title: 사용자 생성이 실패하면 지갑을 생성하지 않는다.
+  requirement_quote: 사용자 생성에 실패하면 사용자 지갑을 생성하지 않는다.
+  doc_ref: registration.md#7. 업무 불변조건
+  stride:
+  - T
+  category: 6
+  cwe: CWE-754
+  standard_ref: null
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R18
+  title: 정상 생성된 사용자에게 초기 지갑을 하나만 생성한다.
+  requirement_quote: 정상적으로 생성된 사용자에게는 하나의 초기 지갑만 생성한다.
+  doc_ref: registration.md#7. 업무 불변조건
+  stride:
+  - T
+  - D
+  category: 6
+  cwe: CWE-840
+  standard_ref: null
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R19
+  title: 회원가입 응답에 비밀번호와 내부 인증 정보를 포함하지 않는다.
+  requirement_quote: 회원가입 응답에 비밀번호나 내부 인증 정보를 포함하지 않는다.
+  doc_ref: registration.md#7. 업무 불변조건
+  stride:
+  - I
+  category: 3
+  cwe: CWE-200
+  standard_ref: null
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R20
+  title: 회원가입 응답에는 생성된 사용자 식별자와 공개 가능한 계정 정보만 포함한다.
+  requirement_quote: 응답은 생성된 사용자 식별자와 공개 가능한 계정 정보만 포함한다.
+  doc_ref: registration.md#신규 사용자 등록
+  stride:
+  - I
+  category: 3
+  cwe: CWE-200
+  standard_ref: null
+  applies_to:
+  - POST /api/Users
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R21
+  title: 리뷰 조회 요청이 리뷰 내용을 변경하지 않도록 한다.
+  requirement_quote: 조회 요청은 리뷰 내용을 변경하지 않는다.
+  doc_ref: reviews.md#상품 리뷰 조회
+  stride:
+  - T
+  category: 6
+  cwe: CWE-352
+  standard_ref: null
+  applies_to:
+  - GET /rest/products/:id/reviews
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R22
+  title: 로그인 사용자가 작성한 리뷰를 서버가 확인한 사용자 정보와 연결한다.
+  requirement_quote: 로그인 사용자가 작성하는 경우 서버가 확인한 사용자 정보와 리뷰를 연결한다.
+  doc_ref: reviews.md#상품 리뷰 작성
+  stride:
+  - S
+  - T
+  category: 5
+  cwe: CWE-807
+  standard_ref: null
+  applies_to:
+  - PUT /rest/products/:id/reviews
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R23
+  title: 익명 리뷰를 계정 소유자가 있는 리뷰와 구분해 저장한다.
+  requirement_quote: 익명 작성이 허용되는 경우 계정 소유자가 있는 리뷰와 구분해 저장한다.
+  doc_ref: reviews.md#상품 리뷰 작성
+  stride:
+  - S
+  - T
+  category: 6
+  cwe: CWE-840
+  standard_ref: null
+  applies_to:
+  - PUT /rest/products/:id/reviews
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R24
+  title: 리뷰 수정 요청의 인증 정보를 확인해 현재 사용자를 식별한다.
+  requirement_quote: 서버는 요청에 포함된 인증 정보를 확인해 현재 사용자를 식별한다.
+  doc_ref: reviews.md#5. 데이터 처리 흐름
+  stride:
+  - S
+  category: 7
+  cwe: CWE-287
+  standard_ref: null
+  applies_to:
+  - PATCH /rest/products/reviews
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R25
+  title: 리뷰 수정은 로그인 사용자에게만 허용한다.
+  requirement_quote: 리뷰 수정은 로그인 사용자에게만 허용한다.
+  doc_ref: reviews.md#7. 업무 불변조건
+  stride:
+  - E
+  category: 2
+  cwe: CWE-306
+  standard_ref: null
+  applies_to:
+  - PATCH /rest/products/reviews
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R26
+  title: 리뷰 식별자와 현재 사용자 정보를 함께 사용해 수정 대상을 조회한다.
+  requirement_quote: 서버는 리뷰 식별자와 현재 사용자 정보를 함께 사용해 수정 대상을 조회한다.
+  doc_ref: reviews.md#5. 데이터 처리 흐름
+  stride:
+  - T
+  - E
+  category: 2
+  cwe: CWE-639
+  standard_ref: 8.1.2
+  applies_to:
+  - PATCH /rest/products/reviews
+  status: approved
+  version: 1
+  out_of_standard: false
+- rule_id: R27
+  title: 리뷰 소유권 판단에 클라이언트가 보낸 작성자 표시값을 사용하지 않는다.
+  requirement_quote: 클라이언트가 보낸 작성자 표시값을 리뷰 소유자 판단에 사용해서는 안 된다.
+  doc_ref: reviews.md#3. 주요 자산
+  stride:
+  - S
+  - E
+  category: 5
+  cwe: CWE-807
+  standard_ref: null
+  applies_to:
+  - PATCH /rest/products/reviews
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R28
+  title: 리뷰 수정 시 클라이언트가 작성자 값을 변경해도 소유권을 바꾸지 않는다.
+  requirement_quote: 클라이언트가 작성자 값을 변경해도 리뷰 소유권은 바뀌지 않는다.
+  doc_ref: reviews.md#7. 업무 불변조건
+  stride:
+  - T
+  - E
+  category: 5
+  cwe: CWE-915
+  standard_ref: 4.2.1
+  applies_to:
+  - PATCH /rest/products/reviews
+  status: approved
+  version: 1
+  out_of_standard: false
+- rule_id: R29
+  title: 리뷰 식별자가 단일 문자열인지 확인한다.
+  requirement_quote: 리뷰 식별자는 단일 문자열이어야 한다.
+  doc_ref: reviews.md#7. 업무 불변조건
+  stride:
+  - T
+  category: 5
+  cwe: CWE-20
+  standard_ref: 2.1.1
+  applies_to:
+  - PATCH /rest/products/reviews
+  status: approved
+  version: 1
+  out_of_standard: false
+- rule_id: R30
+  title: 리뷰 식별자로 전달된 객체나 연산자 표현을 데이터베이스 조회 조건으로 해석하지 않는다.
+  requirement_quote: 리뷰 식별자를 데이터베이스 조회 조건으로 전달할 때 클라이언트가 전송한 객체나 연산자 표현을 조회 조건으로 해석해서는
+    안 된다.
+  doc_ref: reviews.md#5. 데이터 처리 흐름
+  stride:
+  - T
+  - E
+  category: 1
+  cwe: CWE-943
+  standard_ref: 1.2.4
+  applies_to:
+  - PATCH /rest/products/reviews
+  status: approved
+  version: 1
+  out_of_standard: false
+- rule_id: R31
+  title: 한 번의 리뷰 수정 요청으로 둘 이상의 리뷰를 변경하지 않는다.
+  requirement_quote: 한 번의 수정 요청으로 둘 이상의 리뷰가 변경되어서는 안 된다.
+  doc_ref: reviews.md#7. 업무 불변조건
+  stride:
+  - T
+  category: 6
+  cwe: CWE-840
+  standard_ref: null
+  applies_to:
+  - PATCH /rest/products/reviews
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R32
+  title: 존재하지 않거나 소유하지 않은 리뷰의 수정 요청에 다른 사용자의 리뷰 정보를 노출하지 않는다.
+  requirement_quote: 존재하지 않거나 소유하지 않은 리뷰를 요청해도 다른 사용자의 리뷰 정보가 응답에 노출되어서는 안 된다.
+  doc_ref: reviews.md#7. 업무 불변조건
+  stride:
+  - I
+  category: 3
+  cwe: CWE-200
+  standard_ref: null
+  applies_to:
+  - PATCH /rest/products/reviews
+  status: approved
+  version: 1
+  out_of_standard: true
+- rule_id: R33
+  title: 리뷰 수정이 실패하면 기존 본문과 작성자 정보를 유지한다.
+  requirement_quote: 리뷰 수정 실패 시 기존 리뷰의 본문과 작성자 정보는 유지되어야 한다.
+  doc_ref: reviews.md#7. 업무 불변조건
+  stride:
+  - T
+  category: 6
+  cwe: CWE-754
+  standard_ref: null
+  applies_to:
+  - PATCH /rest/products/reviews
+  status: approved
+  version: 1
+  out_of_standard: true
