@@ -76,7 +76,9 @@ def load_slices(path: Path, snapshot: Snapshot) -> list[Slice]:
         ]
         slice_ = Slice(
             slice_id=row["name"], name=row["name"], flows=flows, files=files,
-            sibling_table=[{"method": f.method, "path": f.path, "guards": f.guards} for f in flows],
+            # 검사 목록을 적지 않은 흐름은 "검사 없음"으로 보이지 않게 표를 만들지 않는다.
+            sibling_table=[{"method": f.method, "path": f.path, "guards": f.guards} for f in flows]
+            if all("guards" in f for f in row.get("flows", [])) else [],
             requirement_refs=[row["requirement"]] if row.get("requirement") else [],
             truncated=truncated, capability=Capability.partial if truncated else Capability.supported,
         )

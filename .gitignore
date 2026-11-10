@@ -7,3 +7,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+# 칸별 결과에는 정답 라벨이 들어 있어 커밋하지 않는다.
+eval/reports/**/row-hits.csv
+eval/reports/**/stability.csv
+eval/reports/bc-1st/

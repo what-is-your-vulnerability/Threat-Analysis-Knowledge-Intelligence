@@ -18,6 +18,9 @@ from agent.schemas.models import (
     Slice,
     make_case_id,
 )
+from agent.steps.lenses import render_questions
+
+QUESTION_SUBJECT = "lenses"
 
 
 def load_rules(path: Path) -> list[SecurityRule]:
@@ -42,6 +45,11 @@ def build_cases(slices: list[Slice], rules: list[SecurityRule], budget: Budget, 
                         question=f"{rule.title} (대상 API: {flow.flow_id})",
                         slice_id=slice_.slice_id, flow_id=flow.flow_id, budget=budget,
                     ))
+        if lenses:
+            cases.append(Case(
+                case_id=make_case_id(CaseSource.question, QUESTION_SUBJECT, slice_.name), source=CaseSource.question,
+                subject_id=QUESTION_SUBJECT, question=render_questions(lenses), slice_id=slice_.slice_id, budget=budget,
+            ))
     return cases
 
 

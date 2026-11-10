@@ -1,0 +1,7 @@
+# 평가 조건별 입력. 숫자는 잠정값이다. B의 한도는 G1에서 고른 모델(gpt-6-luna)과 저장소 전체 약 33만 토큰에 맞춘다.
+B:
+  extensions: [.ts, .js, .html]
+  server_exclude: [frontend/]
+  max_input_tokens: 400000
+  max_seconds: 600
+  max_output_tokens: 20000

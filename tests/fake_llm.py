@@ -18,7 +18,7 @@ def _completion(item: dict) -> dict:
         ]
     return {
         "id": "fake", "object": "chat.completion", "created": 0, "model": "fake",
-        "choices": [{"index": 0, "message": message, "finish_reason": "stop"}],
+        "choices": [{"index": 0, "message": message, "finish_reason": item.get("finish_reason", "stop")}],
         "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
     }
 

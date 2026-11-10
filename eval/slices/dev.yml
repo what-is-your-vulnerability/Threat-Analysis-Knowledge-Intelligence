@@ -1,0 +1,49 @@
+# DEV용 손 작성 기능 묶음. designs/dev/*.md의 API를 보고 썼고 정답 파일을 입력으로 쓰지 않았다.
+# 변형마다 검사 코드가 달라 guards는 적지 않는다. LLM은 server.ts의 해당 구간을 직접 읽는다.
+- name: reviews
+  requirement: designs/dev/reviews.md#4. API
+  files:
+    - path: server.ts
+      grep: '/rest/products/.*reviews'
+    - path: routes/showProductReviews.ts
+    - path: routes/createProductReviews.ts
+    - path: routes/updateProductReviews.ts
+    - path: data/mongodb.ts
+    - path: lib/insecurity.ts
+    - path: frontend/src/app/Services/product-review.service.ts
+    - path: frontend/src/app/product-details/product-details.component.ts
+    - path: frontend/src/app/product-details/product-details.component.html
+    - path: frontend/src/app/product-review-edit/product-review-edit.component.ts
+    - path: frontend/src/app/product-review-edit/product-review-edit.component.html
+  flows:
+    - {method: GET, path: '/rest/products/:id/reviews', middleware_complete: true}
+    - {method: PUT, path: '/rest/products/:id/reviews', middleware_complete: true}
+    - {method: PATCH, path: /rest/products/reviews, middleware_complete: true}
+- name: products
+  requirement: designs/dev/products.md#4. API
+  files:
+    - path: server.ts
+      grep: '/api/Products|autoModels|finale\.'
+    - path: models/product.ts
+    - path: lib/insecurity.ts
+    - path: frontend/src/app/Services/product.service.ts
+    - path: frontend/src/app/search-result/search-result.component.ts
+    - path: frontend/src/app/search-result/search-result.component.html
+  flows:
+    - {method: GET, path: /api/Products, middleware_complete: true}
+    - {method: GET, path: '/api/Products/:id', middleware_complete: true}
+    - {method: POST, path: /api/Products, middleware_complete: true}
+    - {method: PUT, path: '/api/Products/:id', middleware_complete: true}
+    - {method: DELETE, path: '/api/Products/:id', middleware_complete: true}
+- name: registration
+  requirement: designs/dev/registration.md#4. API
+  files:
+    - path: server.ts
+      grep: '/api/Users|autoModels|finale\.'
+    - path: models/user.ts
+    - path: lib/insecurity.ts
+    - path: frontend/src/app/Services/user.service.ts
+    - path: frontend/src/app/register/register.component.ts
+    - path: frontend/src/app/register/register.component.html
+  flows:
+    - {method: POST, path: /api/Users, middleware_complete: true}
