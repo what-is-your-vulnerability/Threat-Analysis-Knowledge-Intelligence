@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -20,6 +21,7 @@ SCANNER_DIR = Path(__file__).resolve().parents[4] / "rules" / "scanners"
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}")
 PLACEHOLDERS = {"sarif", "rules", "src", "work"}
+DROPPED_REASONS = {"금지 폴더", "검사 결과 폴더", "제외 폴더", "심볼릭 링크"}  # 이 아래 파일의 경고는 버린다
 
 
 class ScannerSpec(BaseModel):
@@ -104,11 +106,19 @@ def plan_scanners(specs: list[ScannerSpec], snapshot: Snapshot) -> tuple[list[Sc
     return runnable, cells
 
 
+def _field(text: str) -> str:
+    # --mount 값은 CSV라 쉼표나 따옴표가 든 경로는 따옴표로 감싼다
+    return '"' + text.replace('"', '""') + '"' if "," in text or '"' in text else text
+
+
 def _bind(src: Path, dst: str, readonly: bool = False) -> list[str]:
-    source = f"src={src}"
-    if "," in source or '"' in source:
-        source = '"' + source.replace('"', '""') + '"'  # --mount 값은 CSV라 쉼표가 든 경로는 따옴표로 감싼다
-    return ["--mount", f"type=bind,{source},dst={dst}" + (",readonly" if readonly else "")]
+    return ["--mount", f"type=bind,{_field(f'src={src}')},dst={dst}" + (",readonly" if readonly else "")]
+
+
+def _hidden(snapshot: Snapshot) -> list[str]:
+    # 정답·결과 폴더는 컨테이너 안에서 빈 폴더로 가린다. .git 같은 제외 폴더는 도구가 쓸 수 있어 그대로 둔다.
+    return [arg for n in snapshot.not_read if n.reason in ("금지 폴더", "검사 결과 폴더")
+            for arg in ("--mount", f"type=tmpfs,{_field(f'dst=/src/{n.path}')}")]
 
 
 def docker_args(spec: ScannerSpec, snapshot: Snapshot, out: Path, name: str) -> list[str]:
@@ -117,8 +127,10 @@ def docker_args(spec: ScannerSpec, snapshot: Snapshot, out: Path, name: str) -> 
             "--pull", spec.pull]
     if spec.platform:
         args += ["--platform", spec.platform]
+    if hasattr(os, "getuid"):  # 이미지 사용자와 상관없이 붙인 폴더에 쓰고, 결과 파일이 root 소유로 남지 않게 한다
+        args += ["--user", f"{os.getuid()}:{os.getgid()}"]
     args += ["--tmpfs", "/tmp", "-e", "HOME=/tmp", "-w", "/src",
-             *_bind(snapshot.root, "/src", readonly=True), *_bind(scan_dir, "/out"),
+             *_bind(snapshot.root, "/src", readonly=True), *_hidden(snapshot), *_bind(scan_dir, "/out"),
              *_bind(scan_dir / f"{spec.name}-work", "/work")]
     rule_args: list[str] = []
     for number, rule in enumerate(spec.rules):
@@ -165,9 +177,9 @@ def run_scanner(spec: ScannerSpec, snapshot: Snapshot, out: Path) -> ScanOutcome
 
 
 def keep_snapshot_alerts(alerts: list[Fact], snapshot: Snapshot) -> tuple[list[Fact], list[LedgerCell]]:
-    """컨테이너는 대상 폴더 전체를 보므로, 분석 범위(금지 폴더·결과 폴더 제외) 밖 파일의 경고를 뺀다."""
-    known = {f.path for f in snapshot.files}
-    kept = [a for a in alerts if a.file in known]
+    """금지·결과·제외 폴더와 심볼릭 링크 아래 파일의 경고를 뺀다. 확장자를 모르는 파일의 경고는 도구 결과로 남긴다."""
+    hidden = [n.path for n in snapshot.not_read if n.reason in DROPPED_REASONS]
+    kept = [a for a in alerts if not any(a.file == p or a.file.startswith(f"{p}/") for p in hidden)]
     dropped = len(alerts) - len(kept)
     if not dropped:
         return kept, []

@@ -7,7 +7,6 @@ from pathlib import Path
 
 import yaml
 
-from agent.adapters.scanner.sarif import OUT_OF_SCOPE_CWES
 from agent.schemas.models import (
     Budget,
     Case,
@@ -33,6 +32,10 @@ from agent.schemas.models import (
 from agent.steps.lenses import render_questions
 
 QUESTION_SUBJECT = "lenses"
+# 탐지 범위(docs/detection-scope.md, 2026-11-05 고정) 안의 CWE만 AI가 확인한다. 나머지 경고는 도구 결과로만 싣는다.
+IN_SCOPE_CWES = {"CWE-89", "CWE-943", "CWE-306", "CWE-862", "CWE-285", "CWE-639", "CWE-200", "CWE-213", "CWE-532",
+                 "CWE-209", "CWE-312", "CWE-916", "CWE-328", "CWE-319", "CWE-915", "CWE-602", "CWE-841", "CWE-840",
+                 "CWE-20", "CWE-798", "CWE-321", "CWE-347", "CWE-79"}
 
 
 def load_rules(path: Path) -> list[SecurityRule]:
@@ -66,8 +69,7 @@ def build_cases(slices: list[Slice], rules: list[SecurityRule], budget: Budget, 
 
 
 def _alert_in_scope(alert: Fact) -> bool:
-    cwe = alert.detail.get("cwe")
-    return bool(cwe) and cwe not in OUT_OF_SCOPE_CWES
+    return alert.detail.get("cwe") in IN_SCOPE_CWES
 
 
 def _slice_for(alert: Fact, slices: list[Slice]) -> Slice | None:

@@ -27,6 +27,8 @@ class AgentConfig(BaseModel):
     tool_reasoning_effort: str | None = None
     # 먼저 돌릴 SAST 도구. 이름(rules/scanners/<이름>.yml)이나 직접 쓴 정의. 비어 있으면 돌리지 않는다.
     scanners: list[ScannerSpec] = Field(default_factory=list)
+    # 비용 보호. 스캐너 경고로 만드는 AI 확인 항목 상한이고, 넘는 경고는 AI 확인 없이 도구 결과로만 싣는다.
+    max_alert_cases: int = Field(default=50, ge=0)
     # LangSmith 프로젝트 이름. 적었을 때만 추적한다(키는 환경변수 LANGSMITH_API_KEY).
     langsmith_project: str | None = None
 

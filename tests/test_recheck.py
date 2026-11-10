@@ -86,7 +86,9 @@ def _report_with(path, verdicts=(), findings=(), ledger=(), files=("A.java",)):
     return path
 
 
-SCANNER_FINDING = {"finding_id": "f1", "tool_confirmed": True, "case_ids": [], "state": "unverified"}
+SCANNER_FINDING = {"finding_id": "f1", "tool_confirmed": True, "case_ids": [], "state": "unverified",
+                   "root_file": "A.java", "evidence": [{"basis": ["semgrep r"]}]}
+RAN = {"subject": "scanner:semgrep", "target": "*", "state": "checked", "reason": "실행함"}
 
 
 def test_scanner_only_issue_still_there(tmp_path):
@@ -97,7 +99,7 @@ def test_scanner_only_issue_still_there(tmp_path):
 
 def test_scanner_only_issue_gone_with_scanner_running_is_resolved(tmp_path):
     before = _report_with(tmp_path / "a", findings=[SCANNER_FINDING])
-    after = _report_with(tmp_path / "b")
+    after = _report_with(tmp_path / "b", ledger=[RAN])
     assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "resolved")]
 
 
@@ -115,8 +117,20 @@ def test_scanner_only_issue_gone_with_failed_scanner_is_unverifiable(tmp_path):
     assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "unverifiable")]
 
 
-def test_scanner_only_issue_gone_with_only_language_skip_is_resolved(tmp_path):
+def test_scanner_only_issue_gone_with_only_language_skip_is_unverifiable(tmp_path):
     before = _report_with(tmp_path / "a", findings=[SCANNER_FINDING])
-    skipped = {"subject": "scanner:codeql", "target": "*", "state": "deferred", "reason": "대상 언어 파일 없음 (java)"}
+    skipped = {"subject": "scanner:semgrep", "target": "*", "state": "deferred", "reason": "대상 언어 파일 없음 (java)"}
     after = _report_with(tmp_path / "b", ledger=[skipped])
-    assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "resolved")]
+    assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "unverifiable")]
+
+
+def test_scanner_only_issue_gone_after_tool_was_removed_is_unverifiable(tmp_path):
+    before = _report_with(tmp_path / "a", findings=[SCANNER_FINDING])
+    after = _report_with(tmp_path / "b", ledger=[{**RAN, "subject": "scanner:codeql"}])
+    assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "unverifiable")]
+
+
+def test_scanner_only_issue_gone_with_file_deleted_is_unverifiable(tmp_path):
+    before = _report_with(tmp_path / "a", findings=[SCANNER_FINDING])
+    after = _report_with(tmp_path / "b", ledger=[RAN], files=("B.java",))
+    assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "unverifiable")]

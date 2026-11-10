@@ -1,3 +1,4 @@
+import os
 import subprocess
 from pathlib import Path
 
@@ -44,6 +45,13 @@ def test_docker_args_isolate_and_expand(tmp_path):
     assert f"type=bind,src={FIX / 'app'},dst=/src,readonly" in args and "/out/semgrep.sarif" in args
     assert args[args.index("--config") + 1] == "/rules/0.yml" and "{rules}" not in args and "-v" not in args
     assert "semgrep/semgrep:1.183.0" in args and "--metrics=off" in args
+
+
+def test_docker_args_run_as_host_user(tmp_path, monkeypatch):
+    args = docker_args(_semgrep(), _snapshot(), tmp_path, "n")
+    assert args[args.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
+    monkeypatch.delattr(os, "getuid")  # Windows에는 uid가 없다
+    assert "--user" not in docker_args(_semgrep(), _snapshot(), tmp_path, "n")
 
 
 def test_mount_path_with_comma_is_quoted(tmp_path):
@@ -102,11 +110,40 @@ def test_no_scanner_is_recorded():
     assert runnable == [] and cells[0].subject == "scanner:*" and cells[0].reason == "등록된 스캐너 없음"
 
 
-def test_alerts_outside_snapshot_are_dropped():
+def _hidden_target(tmp_path):
+    root = tmp_path / "t"
+    for folder in ("ground-truth-private", "node_modules/x", ".git", "o", "x,y/work"):
+        (root / folder).mkdir(parents=True)
+    (root / "ground-truth-private" / "gt.java").write_text("class G {}\n")
+    (root / "UserDao.java").write_text("class U {}\n")
+    return root, scan_scope(root, exclude=((root / "o").resolve(),))
+
+
+def test_alerts_outside_snapshot_are_dropped(tmp_path):
+    _, snapshot = _hidden_target(tmp_path)
     kept, cells = keep_snapshot_alerts([_alert("UserDao.java"), _alert("ground-truth-private/gt.java"),
-                                        _alert("out/report.json")], _snapshot())
-    assert [a.file for a in kept] == ["UserDao.java"] and "2건" in cells[0].reason
+                                        _alert("o/report.json"), _alert("node_modules/x/a.js")], snapshot)
+    assert [a.file for a in kept] == ["UserDao.java"] and "3건" in cells[0].reason
     assert cells[0].state == LedgerState.deferred and not cells[0].subject.startswith("scanner:")
+
+
+def test_alerts_on_unsupported_extensions_are_kept(tmp_path):
+    root = tmp_path / "t"
+    root.mkdir()
+    for name in ("A.java", "a.jsp", "build.gradle", "conf.json"):
+        (root / name).write_text("x\n")
+    alerts = [_alert("a.jsp", "CWE-79"), _alert("build.gradle"), _alert("conf.json"), _alert("ground-truth-privateX.jsp")]
+    kept, cells = keep_snapshot_alerts(alerts, scan_scope(root))
+    assert kept == alerts and cells == []
+
+
+def test_forbidden_and_result_folders_are_hidden_from_container(tmp_path):
+    root, snapshot = _hidden_target(tmp_path)
+    args = docker_args(_semgrep(), snapshot, root / "o", "n")
+    mounts = [args[i + 1] for i, a in enumerate(args) if a == "--mount"]
+    assert "type=tmpfs,dst=/src/ground-truth-private" in mounts and "type=tmpfs,dst=/src/o" in mounts
+    assert 'type=tmpfs,"dst=/src/x,y/work"' in mounts
+    assert not any(".git" in m or "node_modules" in m for m in mounts)
 
 
 def test_stale_sarif_is_removed_before_run(monkeypatch, tmp_path):

@@ -21,7 +21,7 @@ from agent.adapters.lang.mybatis import parse_mappers
 from agent.adapters.lang.spring import extract_spring
 from agent.adapters.repo.local import check_allowed, open_target
 from agent.adapters.scanner.docker import keep_snapshot_alerts, plan_scanners, run_scanner
-from agent.adapters.scanner.sarif import coverage_gaps
+from agent.adapters.scanner.sarif import ScanOutcome, coverage_gaps
 from agent.config import AgentConfig
 from agent.core.case_graph import LLM_ERRORS, ScanRuntime, run_case
 from agent.core.tracing import trace_client
@@ -137,7 +137,8 @@ def _exit_code(result: RunResult) -> int:
     warned = any(f.outcome == Outcome.warn for f in result.findings)
     not_seen = any(c.state == LedgerState.not_seen for c in result.ledger)
     not_fixed = any(i.change != "resolved" for i in result.recheck)
-    nothing_checked = not result.verdicts and not any(c.state == LedgerState.checked for c in result.ledger)
+    nothing_checked = not result.verdicts and not any(
+        c.state == LedgerState.checked and not c.subject.startswith("scanner:") for c in result.ledger)
     return 1 if has_problem or warned or not_seen or not_fixed or nothing_checked else 0
 
 
@@ -168,6 +169,7 @@ class ScanState(TypedDict, total=False):
     runtime: Any
     slices: list
     cases: list
+    capped_cases: list  # 상한을 넘어 조사하지 않은 경고 항목 ID
     next_case: int
     alerts: list  # 분석 범위 안 경고(structure가 거른 결과)
     findings: list
@@ -203,11 +205,17 @@ def _after_prepare(state: ScanState):
 
 def _scanner(task: dict) -> dict:
     spec = task["spec"]
-    outcome = run_scanner(spec, task["snapshot"], task["out"])
-    cells = [] if outcome.status == Capability.supported else [LedgerCell(
-        subject=f"scanner:{spec.name}", target="*", state=LedgerState.not_seen,
-        reason="; ".join(outcome.errors) or outcome.status.value)]
-    return {"raw_alerts": outcome.alerts, "ledger": cells, "covered_cwes": sorted(outcome.covered_cwes)}
+    try:
+        outcome = run_scanner(spec, task["snapshot"], task["out"])
+    except Exception as e:  # noqa: BLE001 - 도구 하나의 처리 오류가 다른 도구 결과와 검사 전체를 버리게 하지 않는다
+        outcome = ScanOutcome(Capability.failed, errors=[f"스캐너 처리 오류: {type(e).__name__}: {e}"])
+    if outcome.status == Capability.supported:
+        # 재검사는 같은 도구가 정상 실행된 기록이 있어야 도구 결과로만 실린 이슈를 해결로 친다.
+        cell = LedgerCell(subject=f"scanner:{spec.name}", target="*", state=LedgerState.checked, reason="실행함")
+    else:
+        cell = LedgerCell(subject=f"scanner:{spec.name}", target="*", state=LedgerState.not_seen,
+                          reason="; ".join(outcome.errors) or outcome.status.value)
+    return {"raw_alerts": outcome.alerts, "ledger": [cell], "covered_cwes": sorted(outcome.covered_cwes)}
 
 
 def _structure(state: ScanState) -> dict:
@@ -235,9 +243,15 @@ def _structure(state: ScanState) -> dict:
 def _plan_cases(state: ScanState) -> dict:
     settings, slices, rules, design = state["settings"], state["slices"], list(state["rules"]), state["design"]
     cases = build_cases(slices, rules, settings.budget, lenses=state["runtime"].lenses, alerts=state["alerts"])
+    capped = [c.case_id for c in cases if c.source == CaseSource.alert][settings.max_alert_cases:]
+    cases = [c for c in cases if c.case_id not in capped]
     if state["previous"] is not None:
         cases += _recheck_cases(Path(state["previous"]), slices, settings.budget)
     cells = _code_outside_slices(state["snapshot"], slices)
+    if capped:
+        cells.append(LedgerCell(subject="경고 항목 상한", target="*", state=LedgerState.not_seen,
+                                reason=f"상한 {settings.max_alert_cases}개를 넘은 경고 항목 {len(capped)}개는 "
+                                       "AI 확인 없이 도구 결과로만 실음"))
     if design and not any(r.status == RuleStatus.approved for r in rules):
         cells.append(LedgerCell(
             subject="설계문서", target="*", state=LedgerState.not_seen,
@@ -245,7 +259,7 @@ def _plan_cases(state: ScanState) -> dict:
         ))
     cells += [LedgerCell(subject=rule.rule_id, target="*", state=LedgerState.not_seen, reason="승인되지 않았거나 맞는 API가 없음")
               for rule in rules if not any(c.subject_id == rule.rule_id for c in cases)]
-    return {"cases": cases, "ledger": cells, "next_case": 0}
+    return {"cases": cases, "capped_cases": capped, "ledger": cells, "next_case": 0}
 
 
 def _run_one_case(state: ScanState) -> dict:
@@ -267,6 +281,7 @@ def _findings(state: ScanState) -> dict:
     _add_fixes(findings, cases, slices, state["snapshot"], state["runtime"].gateway)
     investigated = {v.case_id for v in verdicts if v.evidence is not None}
     failed_alerts = {c.case_id for c in cases if c.source == CaseSource.alert and c.case_id not in investigated}
+    failed_alerts |= set(state["capped_cases"])  # 상한으로 조사하지 않은 경고도 실패한 경고처럼 도구 결과로 싣는다
     findings += pass_through_alerts(state["alerts"], slices, failed_alerts)
     return {"findings": findings, "ledger": coverage_gaps(set(state["covered_cwes"]))}
 
@@ -309,7 +324,7 @@ def run_scan(target, *, design, out, config: AgentConfig, mode: RunMode = RunMod
     state: ScanState = {
         "target": target, "design": list(design), "out": Path(out), "settings": config, "mode": mode,
         "slices_file": slices_file, "rules": list(rules), "previous": previous, "snapshot": None, "scanners": [],
-        "runtime": None, "slices": [], "cases": [], "next_case": 0, "alerts": [], "findings": [], "exit_code": None,
+        "runtime": None, "slices": [], "cases": [], "capped_cases": [], "next_case": 0, "alerts": [], "findings": [], "exit_code": None,
         "error": None, "result": None, "raw_alerts": list(alerts), "ledger": [], "verdicts": [], "covered_cwes": [],
     }
     # 설정으로 켰을 때만 LangSmith로 보낸다. 셸 환경변수만 켜져 있으면 보내지 않는다.
