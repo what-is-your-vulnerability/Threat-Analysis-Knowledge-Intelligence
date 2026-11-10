@@ -33,7 +33,7 @@ uv run secagent recheck TARGET --previous runs/a --design 설계.md --rules rule
 ```bash
 docker compose -f deploy/docker-compose.yml up -d --wait   # PostgreSQL만 127.0.0.1:55432
 uv run secagent db-upgrade
-uv run secagent api            # 127.0.0.1:8000, 인증 없음
+uv run secagent api            # 127.0.0.1:8000, 인증 없음. Host가 127.0.0.1·localhost인 요청만 받고 상태 변경은 JSON 본문만 받는다
 uv run secagent worker
 uv run secagent openapi > deploy/openapi.json
 ```
