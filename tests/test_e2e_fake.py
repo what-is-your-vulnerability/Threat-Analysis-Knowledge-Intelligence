@@ -266,10 +266,10 @@ def test_question_issue_fixed_is_resolved_on_recheck(fake, tmp_path):
     assert {i.change for i in after.recheck} == {"resolved"}
 
 
-def test_semgrep_off_is_recorded(fake, tmp_path):
+def test_no_scanner_is_recorded_in_scan(fake, tmp_path):
     fake.responses.append({"match": "lens_id별로", "content": '{"claims": []}'})
     r = run_scan(VULN, design=[], out=tmp_path, config=make_config(fake), slices_file=SLICES)
-    assert any(c.subject == "semgrep" and c.state == LedgerState.deferred for c in r.ledger)
+    assert any(c.subject == "scanner:*" and c.state == LedgerState.deferred for c in r.ledger)
 
 
 def test_report_has_capability_table_and_partial_status(fake, tmp_path):

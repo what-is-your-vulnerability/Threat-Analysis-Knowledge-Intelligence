@@ -38,7 +38,28 @@ uv run secagent worker
 uv run secagent openapi > deploy/openapi.json
 ```
 
-Semgrep은 `agent.yml`의 `semgrep.enabled: true`로 켠다. Docker에서 네트워크 없이 돈다.
+## 스캐너 등록
+
+SAST 도구는 `agent.yml`의 `scanners:`에 적는다. 이름을 적으면 `rules/scanners/<이름>.yml` 정의를 쓰고, 정의를 직접 적어도 된다.
+도구는 Docker에서 `--network none --read-only`로 돌고, 코드는 `/src`에 읽기 전용으로 붙는다. 결과 SARIF는 `--out` 폴더의 `scanners/<이름>.sarif`에 남는다.
+
+```yaml
+scanners:
+  - semgrep            # rules/scanners/semgrep.yml
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `name` | 소문자·숫자·`-`·`_`. 결과 파일과 기록표 이름(`scanner:<이름>`) |
+| `image` | Docker 이미지(태그 고정) |
+| `command` | 컨테이너 안 명령. `{sarif}` 필수 |
+| `rules` | 규칙 파일 glob. 정의 파일 기준(직접 적은 정의는 실행 폴더 기준) |
+| `rule_arg` | 규칙 파일마다 앞에 붙일 인자(기본 `--config`) |
+| `languages` | 이 언어 파일이 없으면 건너뜀(기본: 항상 실행) |
+| `platform`, `pull`, `memory`, `timeout_seconds` | `--platform`, `--pull`(`missing`·`never`), 메모리(기본 4g), 시간 제한(기본 600초) |
+
+자리표시자: `{sarif}` 결과 파일, `{rules}` 규칙 인자 목록(한 항목으로만), `{src}` 코드 폴더, `{work}` 쓰기 가능한 작업 폴더(끝나면 지움).
+도구가 실패하면 기록표에 `scanner:<이름>` 못 본 범위로 남고, 다른 도구 결과로 검사는 계속된다. 분석 범위 밖 파일(금지 폴더, 결과 폴더)의 경고는 버린다.
 
 ## 키와 LangSmith 설정
 

@@ -68,7 +68,9 @@ def compare_runs(previous: Path, current: Path) -> list[RecheckItem]:
 def _compare_scanner_findings(before_report: dict, after_report: dict) -> list[RecheckItem]:
     """AI 조사 없이 도구 결과로만 실린 이슈를 비교한다. 스캐너가 정상 실행되지 않았으면 해결로 치지 않는다."""
     after_ids = {f["finding_id"] for f in after_report.get("findings", [])}
-    scanner_ok = not any(c["subject"] == "semgrep" for c in after_report.get("ledger", []))
+    # 스캐너가 하나도 없거나 실패했으면 해결로 치지 않는다. 언어가 안 맞아 건너뛴 도구는 상관없다.
+    scanner_ok = not any(c["subject"] == "scanner:*" or (c["subject"].startswith("scanner:") and c["state"] == "not_seen")
+                         for c in after_report.get("ledger", []))
     items = []
     for finding in before_report.get("findings", []):
         if not finding.get("tool_confirmed") or finding.get("case_ids"):
