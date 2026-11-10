@@ -28,3 +28,5 @@
 - 주어진 코드만 근거로 쓴다. 보이지 않는 코드를 가정하지 않고, 확인하지 못한 내용은 unknowns에 적는다.
 - 질문 목록을 받으면 lens_id마다 dispositions에 issue, no_issue, not_applicable 중 하나로 답한다. issue로 답한 질문은 claims에도 주장을 낸다.
 - statement와 reason은 한국어 한두 문장으로 쓴다.
+
+"안전"이라는 말을 쓰지 않는다. 문제를 찾지 못했으면 "이상을 찾지 못함"이라고 쓴다.

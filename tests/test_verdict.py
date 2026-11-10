@@ -30,6 +30,7 @@ def path(claim=Claim.absent, file="A.java", symbol="A.delete"):
 REFUTED_WITH_PROOF = Review(result=ReviewResult.refuted, evidence=path(Claim.implemented), evidence_check=PASS)
 REFUTED_BAD_PROOF = Review(result=ReviewResult.refuted, evidence=path(Claim.implemented), evidence_check=FAIL)
 REFUTED_NO_PROOF = Review(result=ReviewResult.refuted)
+REFUTED_WRONG_CLAIM = Review(result=ReviewResult.refuted, evidence=path(Claim.absent), evidence_check=PASS)
 
 
 @pytest.mark.parametrize(
@@ -48,6 +49,7 @@ REFUTED_NO_PROOF = Review(result=ReviewResult.refuted)
         (Claim.absent, PASS, [REFUTED_WITH_PROOF], False, False, VerdictState.implemented, Outcome.pass_),
         (Claim.absent, PASS, [REFUTED_BAD_PROOF], False, False, VerdictState.unverified, Outcome.warn),
         (Claim.absent, PASS, [REFUTED_NO_PROOF], False, False, VerdictState.unverified, Outcome.warn),
+        (Claim.absent, PASS, [REFUTED_WRONG_CLAIM], False, False, VerdictState.unverified, Outcome.warn),
         (Claim.implemented, FAIL, [], False, False, VerdictState.unverified, Outcome.warn),
     ],
 )

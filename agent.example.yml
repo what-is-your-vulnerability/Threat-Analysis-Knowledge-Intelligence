@@ -1,4 +1,5 @@
-# 복사해서 agent.yml로 쓴다(커밋하지 않는다). 키는 환경변수 OPENAI_API_KEY로 넘긴다.
+# 복사해서 agent.yml로 쓴다(커밋하지 않는다). 키는 환경변수로 넘긴다.
+# OPENAI_API_KEY는 api.openai.com으로만 나간다. 다른 주소의 키는 LLM_API_KEY로 넘긴다.
 base_url: https://api.openai.com/v1
 # 모델은 비용과 성능을 보고 사용자가 정한다. 값이 없으면 그 역할은 호출하지 않고 실패한다.
 models:

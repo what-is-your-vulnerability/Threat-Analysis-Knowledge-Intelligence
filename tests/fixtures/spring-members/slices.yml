@@ -1,0 +1,22 @@
+- name: admin-members
+  requirement: design.md#회원 관리 API
+  files:
+    - path: src/main/java/demo/member/MemberController.java
+    - path: src/main/java/demo/member/MemberService.java
+    - path: src/main/java/demo/config/SecurityConfig.java
+  flows:
+    - method: GET
+      path: /api/v1/admin/members
+      handler_symbol: MemberController.list
+      guards: ["authenticated", "hasRole('ADMIN')"]
+      middleware_complete: true
+    - method: POST
+      path: /api/v1/admin/members/{id}/suspend
+      handler_symbol: MemberController.suspend
+      guards: ["authenticated", "hasRole('ADMIN')"]
+      middleware_complete: true
+    - method: DELETE
+      path: /api/v1/admin/members/{id}
+      handler_symbol: MemberController.delete
+      guards: ["authenticated"]
+      middleware_complete: true

@@ -50,9 +50,9 @@ class FakeLlm:
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
-                raw = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode()
-                fake.requests.append(json.loads(raw))
-                item = fake._next(raw)
+                body_json = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))).decode())
+                fake.requests.append(body_json)
+                item = fake._next(json.dumps(body_json, ensure_ascii=False))
                 status = item.get("status", 200)
                 body = _completion(item) if status == 200 else {"error": {"message": "fake", "type": "fake"}}
                 data = json.dumps(body, ensure_ascii=False).encode()
@@ -79,7 +79,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["serve"])
     parser.add_argument("script")
-    parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--port", type=int, default=0)  # 0이면 비어 있는 포트를 쓴다.
     args = parser.parse_args()
     with open(args.script, encoding="utf-8") as f, FakeLlm(json.load(f), port=args.port) as fake:
         print(fake.url, flush=True)
