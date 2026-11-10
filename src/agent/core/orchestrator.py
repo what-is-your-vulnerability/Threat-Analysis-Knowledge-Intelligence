@@ -6,6 +6,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from langsmith import traceable, tracing_context
+
 from agent.adapters.lang.java_index import build_index
 from agent.adapters.lang.mybatis import parse_mappers
 from agent.adapters.lang.spring import extract_spring
@@ -93,6 +95,18 @@ def _review_claim(claim, check, slice_text, snapshot, flows, gateway, case, sent
     return result
 
 
+def _case_trace_inputs(inputs: dict) -> dict:
+    """조사 항목 추적에는 ID와 질문만 남긴다. 코드 원문은 넣지 않는다."""
+    case = inputs["case"]
+    return {"case_id": case.case_id, "source": case.source.value, "subject": case.subject_id, "question": case.question,
+            "slice": inputs["slice_"].name, "flow": case.flow_id}
+
+
+def _verdict_trace_outputs(verdicts) -> dict:
+    return {"verdicts": [{"state": v.state.value, "reason": v.reason, "claim_key": v.claim_key} for v in verdicts]}
+
+
+@traceable(name="조사 항목", run_type="chain", process_inputs=_case_trace_inputs, process_outputs=_verdict_trace_outputs)
 def _run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot, gateway, ledger, tools, lenses) -> list[Verdict]:
     slice_text = render_slice(slice_, snapshot)
     sent = [f.path for f in slice_.files]
@@ -219,18 +233,27 @@ def _finish(result: RunResult, out: Path, code: int | None = None, error: str | 
     return result
 
 
-def run_scan(
-    target,
-    *,
-    design,
-    out,
-    config: AgentConfig,
-    mode: RunMode = RunMode.full,
-    slices_file=None,
-    rules=(),
-    previous=None,
-    alerts=(),
-) -> RunResult:
+def _scan_trace_inputs(inputs: dict) -> dict:
+    return {"target": str(inputs["target"]), "mode": inputs["mode"].value, "design": [Path(d).name for d in inputs["design"]],
+            "rules": len(inputs["rules"])}
+
+
+def _scan_trace_outputs(result: RunResult) -> dict:
+    return {"exit_code": result.exit_code, "error": result.error, "findings": len(result.findings),
+            "verdicts": len(result.verdicts), "out": str(result.out)}
+
+
+def run_scan(target, *, design, out, config: AgentConfig, mode: RunMode = RunMode.full, slices_file=None, rules=(),
+             previous=None, alerts=()) -> RunResult:
+    # 설정으로 켰을 때만 LangSmith로 보낸다. 셸 환경변수만 켜져 있으면 보내지 않는다.
+    with tracing_context(enabled=bool(config.langsmith_project), project_name=config.langsmith_project,
+                         tags=["secagent", mode.value]):
+        return _scan(target, design=design, out=out, config=config, mode=mode, slices_file=slices_file, rules=rules,
+                     previous=previous, alerts=alerts)
+
+
+@traceable(name="secagent 검사", run_type="chain", process_inputs=_scan_trace_inputs, process_outputs=_scan_trace_outputs)
+def _scan(target, *, design, out, config: AgentConfig, mode: RunMode, slices_file, rules, previous, alerts) -> RunResult:
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     for path in design:

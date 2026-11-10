@@ -11,6 +11,8 @@ models:
 reasoning_effort: null
 # 도구와 추론 강도를 함께 받지 않는 모델(예: gpt-6.1-terra)은 none으로 둔다. 탐색은 추론 없이, 최종 답은 위 강도로 받는다.
 tool_reasoning_effort: null
+# LangSmith 추적. 프로젝트 이름을 적으면 켜진다(키는 환경변수 LANGSMITH_API_KEY). 비밀값을 가린 뒤의 프롬프트와 응답이 LangSmith로 간다.
+langsmith_project: null
 # 스캐너. 켜면 Docker에서 네트워크 없이 돈다. 이미지 태그는 고정해서 쓴다.
 semgrep:
   enabled: false

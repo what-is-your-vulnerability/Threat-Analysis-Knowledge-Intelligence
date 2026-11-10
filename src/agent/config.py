@@ -28,6 +28,8 @@ class AgentConfig(BaseModel):
     # 도구와 추론 강도를 함께 받지 않는 모델용. 정하면 탐색은 이 값으로 하고, 최종 답은 도구 없이 reasoning_effort로 받는다.
     tool_reasoning_effort: str | None = None
     semgrep: SemgrepConfig = Field(default_factory=SemgrepConfig)
+    # LangSmith 프로젝트 이름. 적었을 때만 추적한다(키는 환경변수 LANGSMITH_API_KEY).
+    langsmith_project: str | None = None
 
 
 def load_config(path: Path | None) -> AgentConfig:
