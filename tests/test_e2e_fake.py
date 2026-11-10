@@ -293,3 +293,12 @@ def test_unknown_framework_makes_status_partial(fake, tmp_path):
     fake.responses.append({"match": "lens_id별로", "content": '{"claims": []}'})
     run_scan(tmp_path / "t", design=[], out=tmp_path / "o", config=make_config(fake))
     assert json.loads((tmp_path / "o" / "report.json").read_text())["status"] == "partial"
+
+
+def test_scan_shows_alerts_to_rule_investigation(scripted, tmp_path):
+    alert = Fact(kind="alert", file="src/main/java/demo/member/MemberService.java", line=22, tool="semgrep",
+                 detail={"cwe": "CWE-89", "rule": "sql", "message": "SQL 조립 경고 원문"})
+    _scan(scripted, tmp_path, alerts=[alert])
+    rule_requests = [json.dumps(q, ensure_ascii=False) for q in scripted.requests]
+    rule_requests = [q for q in rule_requests if "대상 API" in q]
+    assert rule_requests and all("=== 정적분석 경고" in q and "SQL 조립 경고 원문" in q for q in rule_requests)

@@ -80,24 +80,42 @@ def _slice_for(alert: Fact, slices: list[Slice]) -> Slice | None:
     return None
 
 
+def alert_case_id(alert: Fact, slice_: Slice) -> str:
+    """같은 파일·같은 CWE 경고는 도구와 줄이 달라도 조사 항목 하나로 본다."""
+    return make_case_id(CaseSource.alert, alert.detail["cwe"], slice_.name, alert.file)
+
+
+def _alert_line(alert: Fact) -> str:
+    line = (f"- 도구 {alert.tool}, 규칙 {alert.detail.get('rule', 'scanner')}, 위치 {alert.file}:{alert.line}, "
+            f"내용 {alert.detail.get('message', '')}")
+    return line + (f", 경로 {' -> '.join(alert.detail['flow'])}" if alert.detail.get("flow") else "")
+
+
 def _alert_cases(slices: list[Slice], alerts, budget: Budget) -> list[Case]:
     cases: dict[str, Case] = {}
     for alert in alerts:
         slice_ = _slice_for(alert, slices) if _alert_in_scope(alert) else None
         if slice_ is None:
             continue
-        rule = alert.detail.get("rule", "scanner")
-        case_id = make_case_id(CaseSource.alert, rule, slice_.name, alert.file)
-        where = f"{alert.file}:{alert.line}"
-        if case_id in cases:
-            cases[case_id].question += f"\n같은 경고의 다른 위치: {where}"
-        else:
+        case_id = alert_case_id(alert, slice_)
+        if case_id not in cases:
+            cwe = alert.detail["cwe"]
             cases[case_id] = Case(
-                case_id=case_id, source=CaseSource.alert, subject_id=rule, slice_id=slice_.slice_id, budget=budget,
-                question=(f"스캐너 경고가 실제 문제인지 코드로 확인하라. 도구 {alert.tool}, 규칙 {rule}, "
-                          f"{alert.detail.get('cwe')}, 위치 {where}. 경고 내용: {alert.detail.get('message', '')}"),
+                case_id=case_id, source=CaseSource.alert, subject_id=cwe, slice_id=slice_.slice_id, budget=budget,
+                question=f"스캐너 경고가 실제 문제인지 코드로 확인하라. {cwe}, 파일 {alert.file}.",
             )
+        cases[case_id].question += "\n" + _alert_line(alert)
     return list(cases.values())
+
+
+def alerts_by_slice(alerts, slices: list[Slice]) -> dict[str, list[Fact]]:
+    """조사 자료로 보여 줄 경고. 탐지 범위 안이고 묶음에 든 위치만 묶음별로 모은다."""
+    grouped: dict[str, list[Fact]] = {}
+    for alert in alerts:
+        slice_ = _slice_for(alert, slices) if _alert_in_scope(alert) else None
+        if slice_ is not None:
+            grouped.setdefault(slice_.slice_id, []).append(alert)
+    return grouped
 
 
 def pass_through_alerts(alerts, slices: list[Slice], failed_case_ids=frozenset()) -> list[Finding]:
@@ -108,10 +126,8 @@ def pass_through_alerts(alerts, slices: list[Slice], failed_case_ids=frozenset()
     findings = []
     for alert in alerts:
         slice_ = _slice_for(alert, slices) if _alert_in_scope(alert) else None
-        if slice_ is not None:
-            case_id = make_case_id(CaseSource.alert, alert.detail.get("rule", "scanner"), slice_.name, alert.file)
-            if case_id not in failed_case_ids:
-                continue
+        if slice_ is not None and alert_case_id(alert, slice_) not in failed_case_ids:
+            continue
         rule = alert.detail.get("rule", "scanner")
         message = alert.detail.get("message", rule)
         hops = [Hop(file=alert.file, start=alert.line or 1, end=alert.line or 1, role=Role.sink,

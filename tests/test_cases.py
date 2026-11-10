@@ -15,7 +15,7 @@ from agent.schemas.models import (
     SliceFile,
     VerdictState,
 )
-from agent.steps.cases import build_cases, pass_through_alerts, update_ledger
+from agent.steps.cases import alerts_by_slice, build_cases, pass_through_alerts, update_ledger
 from agent.steps.lenses import load_lenses
 from agent.steps.scope import scan_scope
 from agent.steps.slices import load_slices, render_slice
@@ -133,7 +133,7 @@ def test_alert_in_scope_makes_case():
     slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")])]
     case = build_cases(slices, [], Budget(), alerts=[_alert()])[0]
     assert case.source == CaseSource.alert and case.slice_id == "s" and "경고 내용" in case.question
-    assert case.subject_id == "sql-rule"
+    assert case.subject_id == "CWE-89"
 
 
 def test_alert_id_ignores_line_number():
@@ -162,3 +162,37 @@ def test_in_scope_alert_outside_slices_passes_through():
 def test_in_scope_alert_inside_slice_is_not_passed_through():
     slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")])]
     assert pass_through_alerts([_alert()], slices) == []
+
+
+def test_same_line_from_two_tools_is_one_case():
+    slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")])]
+    codeql = Fact(kind="alert", file="A.java", line=3, tool="codeql",
+                  detail={"cwe": "CWE-89", "rule": "java/sql-injection", "message": "m2", "flow": ["B.java:5", "A.java:3"]})
+    cases = build_cases(slices, [], Budget(), alerts=[_alert(), codeql])
+    assert len(cases) == 1 and "도구 semgrep" in cases[0].question and "도구 codeql" in cases[0].question
+    assert "경로 B.java:5 -> A.java:3" in cases[0].question and cases[0].subject_id == "CWE-89"
+    assert cases[0].question.startswith("스캐너 경고가 실제 문제인지 코드로 확인하라. CWE-89, 파일 A.java.")
+
+
+def test_failed_merged_alert_case_passes_both_tools_through():
+    slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")])]
+    codeql = Fact(kind="alert", file="A.java", line=3, tool="codeql", detail={"cwe": "CWE-89", "rule": "q", "message": "m2"})
+    case = build_cases(slices, [], Budget(), alerts=[_alert(), codeql])[0]
+    assert len(pass_through_alerts([_alert(), codeql], slices, {case.case_id})) == 2
+
+
+def test_slice_text_shows_alerts_first():
+    snap = scan_scope(FIX / "vulnerable")
+    slice_ = load_slices(FIX / "slices.yml", snap)[0]
+    alert = _alert(file="src/main/java/demo/member/MemberController.java", line=35)
+    text = render_slice(slice_, snap, alerts=[alert])
+    assert text.startswith("=== 정적분석 경고(도구 결과, 코드로 확인 필요) ===")
+    assert "semgrep sql-rule CWE-89 src/main/java/demo/member/MemberController.java:35 경고 내용" in text
+    assert render_slice(slice_, snap) == text.split("\n", 2)[2]
+
+
+def test_alerts_by_slice_keeps_only_in_scope_alerts_in_that_slice():
+    slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")]),
+              Slice(slice_id="t", name="t", files=[SliceFile(path="B.java")])]
+    grouped = alerts_by_slice([_alert(), _alert(cwe="CWE-918"), _alert(file="C.java")], slices)
+    assert list(grouped) == ["s"] and len(grouped["s"]) == 1

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from agent.schemas.models import (
     Capability,
     Certainty,
     EntryPoint,
+    Fact,
     Flow,
     Hop,
     Relation,
@@ -60,8 +62,12 @@ def _grep_ranges(lines: list[str], pattern: str) -> list[tuple[int, int]]:
     return ranges
 
 
-def render_slice(slice_: Slice, snapshot: Snapshot) -> str:
+def render_slice(slice_: Slice, snapshot: Snapshot, alerts: Sequence[Fact] = ()) -> str:
     parts: list[str] = []
+    if alerts:
+        parts.append("=== 정적분석 경고(도구 결과, 코드로 확인 필요) ===")
+        parts += [f"{a.tool} {a.detail.get('rule')} {a.detail.get('cwe')} {a.file}:{a.line} {a.detail.get('message', '')}"
+                  for a in alerts]
     if slice_.sibling_table:
         parts.append("=== 이 묶음의 API와 확인된 검사 ===")
         parts += [f"{row['method']} {row['path']} | 검사: {', '.join(row['guards']) or '없음'}"
