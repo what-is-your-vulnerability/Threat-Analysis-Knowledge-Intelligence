@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -39,7 +40,7 @@ from agent.schemas.models import (
 from agent.steps.cases import build_cases, pass_through_alerts, update_ledger
 from agent.steps.evidence import check_evidence
 from agent.steps.lenses import load_lenses
-from agent.steps.recheck import RecheckItem, compare_runs
+from agent.steps.recheck import PROBLEM_STATES, RecheckItem, compare_runs
 from agent.steps.report import write_report
 from agent.steps.scope import scan_scope
 from agent.steps.slices import build_slices, fallback_slices, load_slices, locate_handlers, render_slice
@@ -154,12 +155,50 @@ def _auto_slices(snapshot: Snapshot, design, result: RunResult, index, mappers, 
 
 def _run_scanners(snapshot: Snapshot, config: AgentConfig, out: Path, result: RunResult) -> list:
     if not config.semgrep.enabled:
+        result.ledger.append(LedgerCell(subject="semgrep", target="*", state=LedgerState.deferred,
+                                        reason="스캐너가 꺼져 있어 실행하지 않음"))
         return []
     outcome = run_semgrep(snapshot, config.semgrep, out)
     if outcome.status != Capability.supported:
         result.ledger.append(LedgerCell(subject="semgrep", target="*", state=LedgerState.not_seen,
                                         reason="; ".join(outcome.errors) or outcome.status.value))
     return outcome.alerts
+
+
+CODE_LANGUAGES = {"typescript", "javascript", "python", "c", "proc"}
+
+
+def _code_outside_slices(snapshot: Snapshot, slices: list[Slice]) -> list[LedgerCell]:
+    """어느 묶음에도 들어가지 않은 Java 밖의 코드 파일을 못 본 범위로 알린다."""
+    in_slices = {f.path for s in slices for f in s.files}
+    missed = [f.path for f in snapshot.files if f.language in CODE_LANGUAGES and f.path not in in_slices]
+    if not missed:
+        return []
+    shown = ", ".join(missed[:10]) + (" 외" if len(missed) > 10 else "")
+    return [LedgerCell(subject="묶음 밖 코드", target="*", state=LedgerState.not_seen,
+                       reason=f"어느 기능 묶음에도 들어가지 않아 보지 못한 코드 파일 {len(missed)}개: {shown}")]
+
+
+def _recheck_cases(previous: Path, slices: list[Slice], budget) -> list[Case]:
+    """고정 질문·스캐너 경고로 찾은 이전 문제마다 지금도 맞는지 다시 묻는다. 같은 항목 ID를 써야 재검사에서 비교된다."""
+    report = json.loads((previous / "report.json").read_text(encoding="utf-8"))
+    previous_cases = {c["case_id"]: c for c in report.get("cases", [])}
+    slice_ids = {s.slice_id for s in slices}
+    cases: dict[str, Case] = {}
+    for verdict in report["verdicts"]:
+        case = previous_cases.get(verdict["case_id"])
+        evidence = verdict.get("evidence")
+        if (not case or case["source"] not in ("question", "alert", "recheck") or not evidence
+                or verdict["state"] not in PROBLEM_STATES or case["slice_id"] not in slice_ids):
+            continue
+        claim = (f"이전 검사의 주장: {evidence['statement']} (위치 {evidence.get('root_symbol')}, {evidence.get('cwe')}). "
+                 "지금 코드에서도 맞는지 확인하라. 고쳐졌으면 고친 코드를 implemented 근거로, 남아 있으면 문제 주장으로 낸다.")
+        if case["case_id"] in cases:
+            cases[case["case_id"]].question += "\n" + claim
+        else:
+            cases[case["case_id"]] = Case(case_id=case["case_id"], source=CaseSource.recheck, subject_id=case["subject_id"],
+                                          question=claim, slice_id=case["slice_id"], budget=budget)
+    return list(cases.values())
 
 
 def _exit_code(result: RunResult) -> int:
@@ -219,6 +258,9 @@ def run_scan(
     alerts = [*alerts, *_run_scanners(snapshot, config, out, result)]
     lenses = load_lenses()
     result.cases = cases = build_cases(slices, list(rules), config.budget, lenses=lenses, alerts=alerts)
+    if previous is not None:
+        cases += _recheck_cases(Path(previous), slices, config.budget)
+    result.ledger += _code_outside_slices(snapshot, slices)
     slice_by_id = {s.slice_id: s for s in slices}
     rule_by_id = {r.rule_id: r for r in rules}
 

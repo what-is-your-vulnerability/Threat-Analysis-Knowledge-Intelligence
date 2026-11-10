@@ -21,7 +21,8 @@ from agent.schemas.models import (
 
 BLOCK_REVIEWS = 3
 OUTCOME_ORDER = {None: 0, Outcome.pass_: 1, Outcome.warn: 2, Outcome.block: 3}
-SOURCE_ORDER = {CaseSource.rule: 0, CaseSource.alert: 1, CaseSource.question: 2}
+NO_RULE_SOURCES = (CaseSource.question, CaseSource.recheck)
+SOURCE_ORDER = {CaseSource.rule: 0, CaseSource.alert: 1, CaseSource.question: 2, CaseSource.recheck: 2}
 
 
 def root_file(evidence: EvidencePath) -> str | None:
@@ -106,7 +107,7 @@ def group_findings(verdicts: list[Verdict], cases: list[Case], tool_confirmed_id
         by_root.setdefault(root, finding_id)
         finding = findings.setdefault(finding_id, Finding(
             finding_id=finding_id, state=verdict.state, root_file=file, root_symbol=evidence.root_symbol,
-            broken_rule=None if case.source == CaseSource.question else case.subject_id, cwe=evidence.cwe,
+            broken_rule=None if case.source in NO_RULE_SOURCES else case.subject_id, cwe=evidence.cwe,
             category=evidence.category, statement=evidence.statement,
         ))
         finding.evidence.append(evidence)
@@ -132,7 +133,7 @@ def group_findings(verdicts: list[Verdict], cases: list[Case], tool_confirmed_id
             finding_id = make_finding_id(None, case.case_id, case.subject_id)
             findings.setdefault(finding_id, Finding(
                 finding_id=finding_id, state=VerdictState.unverified, statement=f"조사하지 못함: {verdict.reason}",
-                broken_rule=None if case.source == CaseSource.question else case.subject_id,
+                broken_rule=None if case.source in NO_RULE_SOURCES else case.subject_id,
                 flows=[case.flow_id] if case.flow_id else [], outcome=Outcome.warn, case_ids=[case.case_id],
             ))
     return list(findings.values())

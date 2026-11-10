@@ -77,3 +77,32 @@ def test_extra_claim_in_same_case_is_new(tmp_path):
     after = [_verdict("c", "missing_suspected", "k1", "h2"), _verdict("c", "missing_suspected", "k2", "h2")]
     assert _changes(tmp_path, [_verdict("c", "missing_suspected", "k1")], after) == {
         ("c", "k1"): "still", ("c", "k2"): "new"}
+
+
+def _report_with(path, verdicts=(), findings=(), ledger=(), files=("A.java",)):
+    path.mkdir(parents=True, exist_ok=True)
+    data = {"verdicts": list(verdicts), "findings": list(findings), "ledger": list(ledger), "files": list(files)}
+    (path / "report.json").write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+SCANNER_FINDING = {"finding_id": "f1", "tool_confirmed": True, "case_ids": [], "state": "unverified"}
+
+
+def test_scanner_only_issue_still_there(tmp_path):
+    before = _report_with(tmp_path / "a", findings=[SCANNER_FINDING])
+    after = _report_with(tmp_path / "b", findings=[SCANNER_FINDING])
+    assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "still")]
+
+
+def test_scanner_only_issue_gone_with_scanner_running_is_resolved(tmp_path):
+    before = _report_with(tmp_path / "a", findings=[SCANNER_FINDING])
+    after = _report_with(tmp_path / "b")
+    assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "resolved")]
+
+
+def test_scanner_only_issue_gone_with_scanner_off_is_unverifiable(tmp_path):
+    before = _report_with(tmp_path / "a", findings=[SCANNER_FINDING])
+    off = {"subject": "semgrep", "target": "*", "state": "deferred", "reason": "꺼짐"}
+    after = _report_with(tmp_path / "b", ledger=[off])
+    assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "unverifiable")]

@@ -62,6 +62,12 @@ td, th { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: lef
 </table>
 {% endif %}
 
+<h2>분석 범위</h2>
+<p class="muted">전체 상태: {{ status }}</p>
+<table><tr><th>항목</th><th>상태</th></tr>
+{% for name, state in capabilities.items() %}<tr><td>{{ name }}</td><td>{{ state }}</td></tr>{% else %}<tr><td colspan="2">언어별 추출기를 쓰지 않았습니다.</td></tr>{% endfor %}
+</table>
+
 <h2>못 본 범위</h2>
 <table><tr><th>대상</th><th>이유</th></tr>
 {% for c in not_seen %}<tr><td>{{ c.subject }} · {{ c.target }}</td><td>{{ c.reason }}</td></tr>{% endfor %}

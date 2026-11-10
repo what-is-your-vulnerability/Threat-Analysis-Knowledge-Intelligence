@@ -53,7 +53,8 @@ def test_fixed_demo_recheck_resolved(scripted, tmp_path):
 def test_llm_failure_becomes_unverified(fake, tmp_path):
     r = _scan(fake, tmp_path)
     assert r.exit_code == 1 and r.verdicts[0].state == VerdictState.unverified
-    assert r.ledger[0].state == LedgerState.not_seen and r.ledger[0].reason
+    cell = next(c for c in r.ledger if c.subject == "R1")
+    assert cell.state == LedgerState.not_seen and cell.reason
 
 
 def test_report_never_says_safe(scripted, tmp_path):
@@ -237,3 +238,58 @@ def test_out_inside_target_is_not_analyzed(scripted, tmp_path):
                       slices_file=SLICES, rules=RULES)
     assert not any(f.path.startswith("runs/") for f in second.snapshot.files)
     assert {"runs/a", "runs/b"} <= {n.path for n in second.snapshot.not_read}
+
+
+QUESTION_CLAIM = {"claim": "absent", "statement": "삭제에 관리자 확인이 없다", "cwe": "CWE-862", "category": 2,
+                  "root_symbol": "MemberController.delete", "expected_positions": ["MemberController.delete"],
+                  "basis": ["MemberController.suspend의 hasRole"],
+                  "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 35, "end": 35,
+                            "quote": "public void delete(@PathVariable long id) {", "role": "root_control"}]}
+FIXED_PROOF = {"claim": "implemented", "statement": "관리자 확인이 있다", "category": 2,
+               "root_symbol": "MemberController.delete", "checked_value": "hasRole('ADMIN')",
+               "used_value": "hasRole('ADMIN')",
+               "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 36, "end": 37,
+                         "quote": "@PreAuthorize(\"hasRole('ADMIN')\")\n    public void delete(@PathVariable long id) {",
+                         "role": "root_control"}]}
+
+
+def test_question_issue_fixed_is_resolved_on_recheck(fake, tmp_path):
+    fake.responses += [{"match": "재검토한다", "content": '{"result": "kept"}'},
+                       {"match": "수정 방법을 제안한다", "content": '{"location": "l", "code_example": "c", "check_scenario": "s"}'}]
+    fake.responses.append({"match": "lens_id별로", "content": json.dumps({"claims": [QUESTION_CLAIM]})})
+    before = run_scan(VULN, design=[], out=tmp_path / "a", config=make_config(fake), slices_file=SLICES)
+    assert before.findings[0].state == VerdictState.missing_suspected
+    fake.responses[:] = [{"match": "이전 검사의 주장", "content": json.dumps({"claims": [FIXED_PROOF]})},
+                         {"match": "lens_id별로", "content": '{"claims": []}'}]
+    after = run_scan(FIXED, design=[], out=tmp_path / "b", config=make_config(fake), slices_file=SLICES,
+                     mode=RunMode.recheck, previous=tmp_path / "a")
+    assert {i.change for i in after.recheck} == {"resolved"}
+
+
+def test_semgrep_off_is_recorded(fake, tmp_path):
+    fake.responses.append({"match": "lens_id별로", "content": '{"claims": []}'})
+    r = run_scan(VULN, design=[], out=tmp_path, config=make_config(fake), slices_file=SLICES)
+    assert any(c.subject == "semgrep" and c.state == LedgerState.deferred for c in r.ledger)
+
+
+def test_report_has_capability_table_and_partial_status(fake, tmp_path):
+    import shutil
+
+    target = tmp_path / "app"
+    shutil.copytree(VULN, target)
+    (target / "web").mkdir()
+    (target / "web" / "app.js").write_text("fetch('/api/v1/admin/members')\n")
+    fake.responses.append({"match": "lens_id별로", "content": '{"claims": []}'})
+    run_scan(target, design=[], out=tmp_path / "o", config=make_config(fake))
+    report = json.loads((tmp_path / "o" / "report.json").read_text())
+    assert report["capabilities"]["spring.entrypoints"] == "supported"
+    assert any(c["state"] == "not_seen" and "web/app.js" in c["reason"] for c in report["ledger"])
+    assert "분석 범위" in (tmp_path / "o" / "report.html").read_text()
+
+
+def test_unknown_framework_makes_status_partial(fake, tmp_path):
+    (tmp_path / "t").mkdir()
+    (tmp_path / "t" / "a.mjs").write_text("export const a = 1;\n")
+    fake.responses.append({"match": "lens_id별로", "content": '{"claims": []}'})
+    run_scan(tmp_path / "t", design=[], out=tmp_path / "o", config=make_config(fake))
+    assert json.loads((tmp_path / "o" / "report.json").read_text())["status"] == "partial"

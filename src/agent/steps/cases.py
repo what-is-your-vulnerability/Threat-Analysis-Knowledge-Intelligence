@@ -119,7 +119,9 @@ def pass_through_alerts(alerts, slices: list[Slice], failed_case_ids=frozenset()
         evidence = EvidencePath(claim=Claim.defect, statement=message, cwe=alert.detail.get("cwe"), hops=hops,
                                 basis=[f"{alert.tool} {rule}"])
         findings.append(Finding(
-            finding_id=make_finding_id(alert.file, rule, f"{alert.tool}:{alert.line}"), state=VerdictState.unverified,
+            # 줄 번호 대신 코드 조각으로 ID를 만들어 줄이 밀려도 재검사에서 같은 이슈로 비교된다.
+            finding_id=make_finding_id(alert.file, rule, f"{alert.tool}:{alert.detail.get('snippet', '')}"),
+            state=VerdictState.unverified,
             root_file=alert.file, broken_rule=rule, cwe=alert.detail.get("cwe"), statement=message, evidence=[evidence],
             outcome=Outcome.warn, tool_confirmed=True,
         ))
