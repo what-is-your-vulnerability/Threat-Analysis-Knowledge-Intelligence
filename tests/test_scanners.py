@@ -173,3 +173,18 @@ def test_real_container_finds_fixture(tmp_path):
     assert [(a.file, a.line, a.detail["cwe"]) for a in outcome.alerts] == [("UserDao.java", 10, "CWE-89")]
     assert (tmp_path / "scanners" / "semgrep.sarif").exists() and "CWE-89" in outcome.covered_cwes
     assert not (tmp_path / "scanners" / "semgrep-work").exists()
+
+
+def test_codeql_definition_never_pulls_and_needs_java(tmp_path):
+    spec = load_scanner("codeql", Path.cwd())
+    args = docker_args(spec, _snapshot(), tmp_path, "n")
+    assert args[args.index("--pull") + 1] == "never" and args[args.index("--platform") + 1] == "linux/amd64"
+    assert spec.languages == ["java"] and spec.rules == [] and "--output=/out/codeql.sarif" in args[-1]
+    assert args[args.index("--memory") + 1] == "8g"
+
+
+@pytest.mark.codeql
+def test_real_codeql_container_reports_coverage(tmp_path):
+    out = run_scanner(load_scanner("codeql", Path.cwd()), _snapshot(), tmp_path)
+    assert out.status == Capability.supported, out.errors
+    assert "CWE-89" in out.covered_cwes and (tmp_path / "scanners" / "codeql.sarif").exists()

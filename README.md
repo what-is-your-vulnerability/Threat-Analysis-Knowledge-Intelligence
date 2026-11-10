@@ -61,6 +61,19 @@ scanners:
 자리표시자: `{sarif}` 결과 파일, `{rules}` 규칙 인자 목록(한 항목으로만), `{src}` 코드 폴더, `{work}` 쓰기 가능한 작업 폴더(끝나면 지움).
 도구가 실패하면 기록표에 `scanner:<이름>` 못 본 범위로 남고, 다른 도구 결과로 검사는 계속된다. 분석 범위 밖 파일(금지 폴더, 결과 폴더)의 경고는 버린다.
 
+### CodeQL
+
+`rules/scanners/codeql.yml`은 Java를 빌드 없이(`--build-mode=none`) `java-security-extended`로 검사한다. 이미지는 로컬에서 빌드하고 레지스트리에서 받지 않는다(`pull: never`).
+
+```bash
+docker build --platform linux/amd64 --build-arg CODEQL_SHA256=<공식 SHA-256> \
+  -t secagent-codeql:2.27.4 deploy/scanners/codeql
+uv run pytest -m codeql      # 이미지가 있을 때만
+```
+
+- 라이선스: GitHub Advanced Security 없이는 OSI 오픈소스 코드와 학술 연구·시연에만 쓸 수 있다. 사내 비공개 코드에 쓰기 전에 라이선스를 확인한다.
+- Apple Silicon에서는 amd64 에뮬레이션으로 돌아 느리다. 대상에 Java 파일이 없으면 건너뛴다(기록표 `scanner:codeql` deferred).
+
 ## 키와 LangSmith 설정
 
 키는 `agent/.env`에 둔다(`.env.example`을 복사, 커밋하지 않음). 셸에 이미 있는 값이 먼저다.
@@ -83,6 +96,7 @@ LLM 호출에는 비밀값을 가린 뒤의 메시지와 응답이 남고, 검�
 uv run ruff check . && uv run pytest          # 모의 LLM, 컨테이너 없이
 uv run pytest -m docker                       # Semgrep 실제 컨테이너
 uv run pytest -m postgres                     # docker compose로 띄운 PostgreSQL 필요
+uv run pytest -m codeql                       # 로컬에서 빌드한 CodeQL 이미지 필요
 ```
 
 ## 평가
