@@ -27,11 +27,16 @@ def _status(snapshot) -> str:
     return snapshot.status.value
 
 
+def _count(items) -> dict[str, int]:
+    return {s.value: sum(i.state == s for i in items) for s in VerdictState}
+
+
 def write_report(result, out: Path) -> None:
     out = Path(out)
     snapshot = result.snapshot
     data = {
-        "target": str(snapshot.root) if snapshot else None,
+        # 서버 절대 경로는 화면·API로 내보내지 않고 폴더 이름만 남긴다.
+        "target": Path(snapshot.root).resolve().name if snapshot else None,
         "commit": snapshot.commit if snapshot else None,
         "manifest_hash": snapshot.manifest_hash if snapshot else None,
         "mode": result.mode.value,
@@ -39,7 +44,9 @@ def write_report(result, out: Path) -> None:
         "capabilities": {k: v.value for k, v in snapshot.capabilities.items()} if snapshot else {},
         "exit_code": result.exit_code,
         "error": result.error,
-        "findings": [f.model_dump(mode="json") for f in result.findings],
+        # verdicts는 조사 항목별 판정(구현 확인 포함), findings는 묶은 이슈(누락 의심·검증 불충분만)다.
+        "summary": {"verdicts": _count(result.verdicts), "findings": _count(result.findings)},
+        "findings":[f.model_dump(mode="json") for f in result.findings],
         "verdicts": [v.model_dump(mode="json") for v in result.verdicts],
         "cases": [c.model_dump(mode="json") for c in result.cases],
         "ledger": [c.model_dump(mode="json") for c in result.ledger],
