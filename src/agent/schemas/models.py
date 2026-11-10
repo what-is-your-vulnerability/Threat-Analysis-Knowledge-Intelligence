@@ -57,6 +57,7 @@ class CaseSource(str, Enum):
     rule = "rule"
     question = "question"
     alert = "alert"
+    recheck = "recheck"  # 재검사 때 이전 주장이 지금도 맞는지 다시 묻는 항목
 
 
 class Capability(str, Enum):

@@ -61,4 +61,18 @@ def compare_runs(previous: Path, current: Path) -> list[RecheckItem]:
         # 같은 항목에서 이름만 바뀐 주장은 위에서 이미 비교했다.
         if verdict["state"] in PROBLEM_STATES and key not in handled and key[0] not in renamed_cases:
             items.append(RecheckItem(case_id=key[0], claim_key=key[1], change="new"))
+    items += _compare_scanner_findings(before_report, after_report)
+    return items
+
+
+def _compare_scanner_findings(before_report: dict, after_report: dict) -> list[RecheckItem]:
+    """AI 조사 없이 도구 결과로만 실린 이슈를 비교한다. 스캐너가 정상 실행되지 않았으면 해결로 치지 않는다."""
+    after_ids = {f["finding_id"] for f in after_report.get("findings", [])}
+    scanner_ok = not any(c["subject"] == "semgrep" for c in after_report.get("ledger", []))
+    items = []
+    for finding in before_report.get("findings", []):
+        if not finding.get("tool_confirmed") or finding.get("case_ids"):
+            continue
+        change = "still" if finding["finding_id"] in after_ids else ("resolved" if scanner_ok else "unverifiable")
+        items.append(RecheckItem(case_id=finding["finding_id"], claim_key="scanner", change=change))
     return items

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from agent.schemas.models import CaseSource, VerdictState
+from agent.schemas.models import Capability, CaseSource, VerdictState
 from agent.steps.sarif import to_sarif
 
 STATE_LABELS = {"implemented": "구현 확인", "missing_suspected": "누락 의심", "unverified": "검증 불충분",
@@ -18,6 +18,15 @@ RECHECK_LABELS = {"resolved": "해결 확인", "still": "남아 있음", "new": 
 OVERALL = {0: ("통과", "pass"), 1: ("경고", "warn"), 2: ("차단", "block"), 3: ("실행 실패", "block")}
 
 
+def _status(snapshot) -> str:
+    if snapshot is None:
+        return "failed"
+    parts = set(snapshot.capabilities.values())
+    if snapshot.status == Capability.supported and parts & {Capability.partial, Capability.unsupported, Capability.failed}:
+        return Capability.partial.value  # 일부만 알아본 프로젝트를 "지원"으로 보이지 않게 한다
+    return snapshot.status.value
+
+
 def write_report(result, out: Path) -> None:
     out = Path(out)
     snapshot = result.snapshot
@@ -26,7 +35,8 @@ def write_report(result, out: Path) -> None:
         "commit": snapshot.commit if snapshot else None,
         "manifest_hash": snapshot.manifest_hash if snapshot else None,
         "mode": result.mode.value,
-        "status": snapshot.status.value if snapshot else "failed",
+        "status": _status(snapshot),
+        "capabilities": {k: v.value for k, v in snapshot.capabilities.items()} if snapshot else {},
         "exit_code": result.exit_code,
         "error": result.error,
         "findings": [f.model_dump(mode="json") for f in result.findings],
