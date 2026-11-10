@@ -16,7 +16,7 @@ from agent.adapters.repo.local import ForbiddenPathError, check_allowed, open_ta
 from agent.config import AgentConfig, ConfigError, load_config
 from agent.core.orchestrator import RunResult, run_scan
 from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
-from agent.llm.roles import derive_rules, load_templates
+from agent.llm.roles import derive_rules, load_templates, renumber_after
 from agent.schemas.models import RuleStatus, RunMode, SecurityRule
 from agent.steps.cases import load_rules
 from agent.steps.scope import scan_scope
@@ -75,7 +75,10 @@ def _derive(args) -> int:
     entrypoints = [f"{e.method} {e.path_template}" for e in spring.entrypoints]
     config = load_config(args.config)
     derived = derive_rules(args.design, entrypoints, load_templates(), gateway=LlmGateway(config, workdir))
-    _write_rules(args.out, list(derived))
+    # 이미 승인한 규칙은 남기고, 승인 전 후보만 새 후보로 바꾼다.
+    existing = load_rules(args.out) if args.out.exists() else []
+    approved = [r for r in existing if r.status == RuleStatus.approved]
+    _write_rules(args.out, [*approved, *renumber_after([r.rule_id for r in existing], list(derived))])
     args.out.with_suffix(".threats.yml").write_text(
         yaml.safe_dump(derived.threats, allow_unicode=True, sort_keys=False), encoding="utf-8")
     for warning in derived.warnings:

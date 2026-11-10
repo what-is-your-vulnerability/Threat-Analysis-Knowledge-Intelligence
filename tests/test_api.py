@@ -45,7 +45,7 @@ def scripted(fake):
 
 @pytest.fixture
 def client(sessions, fake, tmp_path):
-    return TestClient(create_app(sessions, make_config(fake), runs_dir=tmp_path))
+    return TestClient(create_app(sessions, make_config(fake), runs_dir=tmp_path), base_url="http://127.0.0.1")
 
 
 def _project(client, target=VULN):
@@ -63,7 +63,7 @@ def _scan(client, project_id, **extra):
 def _approved_rule(client, project_id, fake):
     assert client.post(f"/api/v1/projects/{project_id}/documents", json={"path": str(FIX / "design.md")}).status_code == 201
     fake.responses.insert(0, {"match": "보안 설계 검토자", "content": json.dumps(DERIVED, ensure_ascii=False)})
-    rules = client.post(f"/api/v1/projects/{project_id}/rules/derive").json()["rules"]
+    rules = client.post(f"/api/v1/projects/{project_id}/rules/derive", json={}).json()["rules"]
     assert [r["status"] for r in rules] == ["pending"]
     return rules[0]["id"]
 
@@ -97,7 +97,7 @@ def test_forbidden_target_rejected(client, tmp_path):
 def test_worker_runs_job_then_findings_visible(client, sessions, scripted, tmp_path):
     project_id = _project(client)
     rule_id = _approved_rule(client, project_id, scripted)
-    assert client.post(f"/api/v1/rules/{rule_id}/approve").status_code == 200
+    assert client.post(f"/api/v1/rules/{rule_id}/approve", json={}).status_code == 200
     scan = _scan(client, project_id)
     assert run_next(sessions, make_config(scripted), tmp_path).id == scan["id"]
     done = client.get(f"/api/v1/scans/{scan['id']}").json()
@@ -175,7 +175,7 @@ def test_pending_rule_is_not_used(client, sessions, scripted, tmp_path):
 def test_rule_approve_then_used(client, sessions, scripted, tmp_path):
     project_id = _project(client)
     rule_id = _approved_rule(client, project_id, scripted)
-    approved = client.post(f"/api/v1/rules/{rule_id}/approve").json()
+    approved = client.post(f"/api/v1/rules/{rule_id}/approve", json={}).json()
     assert approved["status"] == "approved" and approved["version"] == 2
     assert client.get(f"/api/v1/projects/{project_id}/rules").json()[0]["status"] == "approved"
     scan = _scan(client, project_id)
@@ -202,3 +202,25 @@ def test_api_binds_localhost_only():
 
 def test_scan_status_column_exists():
     assert {"queued", "running", "done", "failed"} >= {ScanRun.__table__.c.status.default.arg}
+
+
+def test_rejects_requests_for_other_hosts(sessions, fake, tmp_path):
+    app = create_app(sessions, make_config(fake), runs_dir=tmp_path)
+    assert TestClient(app, base_url="http://evil.example").get("/api/v1/scans/1").status_code == 400
+
+
+def test_state_change_needs_json(client):
+    project_id = _project(client)
+    assert client.post(f"/api/v1/projects/{project_id}/rules/derive").status_code == 415
+    form = client.post("/api/v1/rules/1/approve", data={"x": "1"})
+    assert form.status_code == 415
+
+
+def test_rederive_keeps_ids_unique_and_approved_rules(client, scripted):
+    project_id = _project(client)
+    first = _approved_rule(client, project_id, scripted)
+    client.post(f"/api/v1/rules/{first}/approve", json={})
+    scripted.responses.insert(0, {"match": "보안 설계 검토자", "content": json.dumps(DERIVED, ensure_ascii=False)})
+    client.post(f"/api/v1/projects/{project_id}/rules/derive", json={})
+    rules = client.get(f"/api/v1/projects/{project_id}/rules").json()
+    assert [(r["rule_id"], r["status"]) for r in rules] == [("R1", "approved"), ("R2", "pending")]

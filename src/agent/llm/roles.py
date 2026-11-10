@@ -259,3 +259,10 @@ def derive_rules(design_docs, entrypoints: list[str], templates: list[dict], *, 
     covered = {r.category for r in derived} | set(derived.category_notes)
     derived.warnings += [f"범주 {c}: 규칙도 해당 없음 이유도 없음" for c in range(1, 9) if c not in covered]
     return derived
+
+
+def renumber_after(used_ids, derived: list[SecurityRule]) -> list[SecurityRule]:
+    """새 후보의 ID를 이미 쓴 ID 뒤로 매긴다. 한 프로젝트에서 규칙 ID가 겹치면 조사 항목 ID도 겹친다."""
+    numbers = [int(i[1:]) for i in used_ids if i[:1] == "R" and i[1:].isdigit()]
+    start = max(numbers, default=0)
+    return [rule.model_copy(update={"rule_id": f"R{start + n}"}) for n, rule in enumerate(derived, start=1)]

@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -14,11 +16,13 @@ from agent.adapters.lang.spring import extract_spring
 from agent.adapters.repo.local import ForbiddenPathError, check_allowed
 from agent.config import AgentConfig, ConfigError
 from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
-from agent.llm.roles import derive_rules, load_templates
+from agent.llm.roles import derive_rules, load_templates, renumber_after
 from agent.steps.scope import scan_scope
 from agent.store.models import Document, FindingRow, LedgerCellRow, Project, ScanRun, SecurityRuleRow
 
 API_HOST = "127.0.0.1"
+ALLOWED_HOSTS = ("127.0.0.1", "localhost")
+STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
 GATE_OUTCOME = {0: "pass", 1: "warn", 2: "block", 3: "failed"}
 
 
@@ -58,6 +62,17 @@ def _scan_out(run: ScanRun) -> dict:
 
 def create_app(session_factory, config: AgentConfig, *, runs_dir: Path = Path("runs")) -> FastAPI:
     app = FastAPI(title="보안 진단 Agent API", version="0.1.0")
+    # 인증이 없으므로 DNS rebinding으로 들어온 요청을 거절한다.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(ALLOWED_HOSTS))
+
+    @app.middleware("http")
+    async def require_json(request: Request, call_next):
+        # 다른 웹 페이지의 form 전송으로 승인·도출 같은 상태 변경이 일어나지 않게 JSON 요청만 받는다.
+        content_type = request.headers.get("content-type", "")
+        if request.method in STATE_CHANGING and not content_type.startswith("application/json"):
+            return JSONResponse(status_code=415, content={"detail": "JSON 본문이 필요합니다."})
+        return await call_next(request)
+
     prefix = "/api/v1"
 
     def _get(session, model, item_id: int):
@@ -102,8 +117,14 @@ def create_app(session_factory, config: AgentConfig, *, runs_dir: Path = Path("r
                 raise HTTPException(status_code=409, detail=str(e)) from e
             except (LlmCallError, LlmFormatError, BudgetExceeded, SecretLeft) as e:
                 raise HTTPException(status_code=502, detail=str(e)) from e
+            existing = list(session.scalars(select(SecurityRuleRow).where(SecurityRuleRow.project_id == project_id)))
+            # 승인 전 후보만 새 후보로 바꾸고, ID는 이 프로젝트에서 쓴 적 없는 번호로 매긴다.
+            for row in existing:
+                if row.status != "approved":
+                    session.delete(row)
+            fresh = renumber_after([r.rule_id for r in existing], list(derived))
             rows = [SecurityRuleRow(project_id=project_id, rule_id=r.rule_id, status=r.status.value, version=r.version,
-                                    data=r.model_dump(mode="json")) for r in derived]
+                                    data=r.model_dump(mode="json")) for r in fresh]
             session.add_all(rows)
             session.commit()
             return {"rules": [_rule_out(r) for r in rows], "warnings": derived.warnings}
