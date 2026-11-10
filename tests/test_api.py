@@ -102,13 +102,19 @@ def test_worker_runs_job_then_findings_visible(client, sessions, scripted, tmp_p
     assert run_next(sessions, make_config(scripted), tmp_path).id == scan["id"]
     done = client.get(f"/api/v1/scans/{scan['id']}").json()
     assert done["status"] == "done" and done["exit_code"] == 1
-    findings = client.get(f"/api/v1/scans/{scan['id']}/findings").json()
+    assert done["project_name"] == "demo" and done["created_at"] and done["finished_at"]
+    findings =client.get(f"/api/v1/scans/{scan['id']}/findings").json()
     assert findings[0]["root_symbol"] == "MemberController.delete" and findings[0]["state"] == "missing_suspected"
     assert findings[0]["fix"]["check_scenario"]
     ledger = client.get(f"/api/v1/scans/{scan['id']}/ledger").json()
     assert any(c["subject"] == "R1" and c["state"] == "checked" for c in ledger)
     report = client.get(f"/api/v1/scans/{scan['id']}/report").json()
     assert report["exit_code"] == 1 and report["findings"]
+    assert report["project_name"] == "demo" and report["target"] == VULN.name
+    summary = report["summary"]
+    assert sum(summary["verdicts"].values()) == len(report["verdicts"])
+    assert summary["findings"]["missing_suspected"] == sum(f["state"] == "missing_suspected" for f in findings)
+    assert summary["findings"]["implemented"] == 0
 
 
 def test_no_job_returns_none(sessions, fake, tmp_path):

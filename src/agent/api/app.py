@@ -55,9 +55,14 @@ def _rule_out(row: SecurityRuleRow) -> dict:
     return {"id": row.id, "rule_id": row.rule_id, "status": row.status, "version": row.version, "data": row.data}
 
 
-def _scan_out(run: ScanRun) -> dict:
-    return {"id": run.id, "project_id": run.project_id, "status": run.status, "exit_code": run.exit_code, "error": run.error,
-            "previous_scan_id": run.previous_scan_id}
+def _iso(value) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _scan_out(run: ScanRun, project: Project) -> dict:
+    return {"id": run.id, "project_id": run.project_id, "project_name": project.name, "status": run.status,
+            "exit_code": run.exit_code, "error": run.error, "previous_scan_id": run.previous_scan_id,
+            "created_at": _iso(run.created_at), "finished_at": _iso(run.finished_at)}
 
 
 def create_app(session_factory, config: AgentConfig, *, runs_dir: Path = Path("runs")) -> FastAPI:
@@ -149,18 +154,19 @@ def create_app(session_factory, config: AgentConfig, *, runs_dir: Path = Path("r
     @app.post(f"{prefix}/scans", status_code=202)
     def create_scan(body: ScanIn) -> dict:
         with session_factory() as session:
-            _get(session, Project, body.project_id)
+            project = _get(session, Project, body.project_id)
             if body.previous_scan_id is not None:
                 _get(session, ScanRun, body.previous_scan_id)
             run = ScanRun(project_id=body.project_id, status="queued", previous_scan_id=body.previous_scan_id)
             session.add(run)
             session.commit()
-            return _scan_out(run)
+            return _scan_out(run, project)
 
     @app.get(f"{prefix}/scans/{{scan_id}}")
     def get_scan(scan_id: int) -> dict:
         with session_factory() as session:
-            return _scan_out(_get(session, ScanRun, scan_id))
+            run = _get(session, ScanRun, scan_id)
+            return _scan_out(run, session.get(Project, run.project_id))
 
     @app.get(f"{prefix}/scans/{{scan_id}}/findings")
     def get_findings(scan_id: int) -> list[dict]:
@@ -182,7 +188,8 @@ def create_app(session_factory, config: AgentConfig, *, runs_dir: Path = Path("r
             path = Path(run.out_dir or "") / "report.json"
             if not run.out_dir or not path.exists():
                 raise HTTPException(status_code=409, detail="리포트가 아직 없습니다.")
-            return json.loads(path.read_text(encoding="utf-8"))
+            return {"project_name": session.get(Project, run.project_id).name,
+                    **json.loads(path.read_text(encoding="utf-8"))}
 
     @app.post(f"{prefix}/gates/evaluate")
     def evaluate_gate(body: GateIn) -> dict:
