@@ -181,3 +181,7 @@ def test_config_secret_is_masked_in_tools_and_slices(tmp_path):
     assert "tiger123" not in ReadOnlyTools(snapshot).call("search", {"pattern": "datasource"})
     one = Slice(slice_id="s", name="s", files=[SliceFile(path="application.properties")])
     assert "tiger123" not in render_slice(one, snapshot)
+
+
+def test_bad_argument_types_return_error_text(tools):
+    assert tools.call("read_code", {"path": CONTROLLER, "start": "line 3", "end": 4}).startswith("오류")

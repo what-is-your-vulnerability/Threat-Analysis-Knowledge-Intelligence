@@ -198,7 +198,7 @@ def run_scan(
         check_allowed(Path(path).resolve())
 
     result = RunResult(out=out, mode=mode)
-    result.snapshot = snapshot = scan_scope(open_target(Path(target), out / "_target"))
+    result.snapshot = snapshot = scan_scope(open_target(Path(target), out / "_target"), exclude=(out.resolve(),))
     if snapshot.status == Capability.failed:
         return _finish(result, out, 3, "분석할 파일이 없습니다.")
 
@@ -240,7 +240,9 @@ def run_scan(
 
     result.findings = group_findings(result.verdicts, cases, set())
     _add_fixes(result.findings, cases, slices, snapshot, gateway)
-    result.findings += pass_through_alerts(alerts, slices)
+    investigated = {v.case_id for v in result.verdicts if v.evidence is not None}
+    failed_alerts = {c.case_id for c in cases if c.source == CaseSource.alert and c.case_id not in investigated}
+    result.findings += pass_through_alerts(alerts, slices, failed_alerts)
     result.ledger += coverage_gaps(config.semgrep.rule_files() if config.semgrep.enabled else [])
 
     _finish(result, out)

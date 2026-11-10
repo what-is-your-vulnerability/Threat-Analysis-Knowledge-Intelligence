@@ -125,4 +125,14 @@ def group_findings(verdicts: list[Verdict], cases: list[Case], tool_confirmed_id
         outcomes = [policy_outcome(v, tool_confirmed=finding.tool_confirmed, rule_approved=False)
                     for v in members[finding_id]]
         finding.outcome = max(outcomes, key=OUTCOME_ORDER.__getitem__)
+    # 조사 자체가 실패한 항목도 이슈로 남긴다. 그래야 화면과 API에서 "0건"으로 보이지 않는다.
+    for verdict in verdicts:
+        if verdict.evidence is None and verdict.state == VerdictState.unverified:
+            case = case_by_id[verdict.case_id]
+            finding_id = make_finding_id(None, case.case_id, case.subject_id)
+            findings.setdefault(finding_id, Finding(
+                finding_id=finding_id, state=VerdictState.unverified, statement=f"조사하지 못함: {verdict.reason}",
+                broken_rule=None if case.source == CaseSource.question else case.subject_id,
+                flows=[case.flow_id] if case.flow_id else [], outcome=Outcome.warn, case_ids=[case.case_id],
+            ))
     return list(findings.values())

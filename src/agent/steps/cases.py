@@ -100,12 +100,18 @@ def _alert_cases(slices: list[Slice], alerts, budget: Budget) -> list[Case]:
     return list(cases.values())
 
 
-def pass_through_alerts(alerts, slices: list[Slice]) -> list[Finding]:
-    """AI가 판정하지 않는 경고를 도구 결과 그대로 이슈로 만든다. 탐지 범위 밖이거나 묶음에 없는 위치의 경고다."""
+def pass_through_alerts(alerts, slices: list[Slice], failed_case_ids=frozenset()) -> list[Finding]:
+    """AI가 판정하지 않는 경고를 도구 결과 그대로 이슈로 만든다.
+
+    탐지 범위 밖이거나 묶음에 없는 위치의 경고, 그리고 AI 조사가 실패한 경고다.
+    """
     findings = []
     for alert in alerts:
-        if _alert_in_scope(alert) and _slice_for(alert, slices) is not None:
-            continue
+        slice_ = _slice_for(alert, slices) if _alert_in_scope(alert) else None
+        if slice_ is not None:
+            case_id = make_case_id(CaseSource.alert, alert.detail.get("rule", "scanner"), slice_.name, alert.file)
+            if case_id not in failed_case_ids:
+                continue
         rule = alert.detail.get("rule", "scanner")
         message = alert.detail.get("message", rule)
         hops = [Hop(file=alert.file, start=alert.line or 1, end=alert.line or 1, role=Role.sink,
