@@ -1,0 +1,13 @@
+# Spring 진입점과 가드를 알아보는 이름. 조직이 쓰는 이름을 여기에 더할 수 있다.
+controllers: [RestController, Controller]
+mappings:
+  GetMapping: GET
+  PostMapping: POST
+  PutMapping: PUT
+  PatchMapping: PATCH
+  DeleteMapping: DELETE
+method_security_switch: [EnableMethodSecurity, EnableGlobalMethodSecurity]
+method_security: [PreAuthorize, Secured, RolesAllowed]
+url_matchers: [requestMatchers, antMatchers, mvcMatchers, anyRequest]
+url_access: [permitAll, denyAll, authenticated, hasRole, hasAnyRole, hasAuthority, hasAnyAuthority, access]
+filter_bases: [OncePerRequestFilter, GenericFilterBean, Filter]
