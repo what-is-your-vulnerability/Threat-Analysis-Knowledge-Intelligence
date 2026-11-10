@@ -27,6 +27,7 @@ from agent.schemas.models import (
     Outcome,
     Review,
     ReviewResult,
+    RuleStatus,
     RunMode,
     SecurityRule,
     Slice,
@@ -208,6 +209,11 @@ def run_scan(
     slice_by_id = {s.slice_id: s for s in slices}
     rule_by_id = {r.rule_id: r for r in rules}
 
+    if design and not any(r.status == RuleStatus.approved for r in rules):
+        result.ledger.append(LedgerCell(
+            subject="설계문서", target="*", state=LedgerState.not_seen,
+            reason="승인된 보안 규칙이 없어 설계 요구를 직접 대조하지 못함. secagent rules derive로 후보를 만들어 승인한다.",
+        ))
     for rule in rules:
         if not any(c.subject_id == rule.rule_id for c in cases):
             result.ledger.append(LedgerCell(subject=rule.rule_id, target="*", state=LedgerState.not_seen,

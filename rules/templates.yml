@@ -1,0 +1,207 @@
+# 탐지 범위 1~8에 맞는 OWASP ASVS 5.0.0 항목. tools/repos/ai-deep-sast/config/asvs/asvs_5.0.0.json에서 옮겼고 ASVS 원문과는 대조하지 않았다.
+# category만 이 프로젝트에서 붙였다. 출처와 라이선스는 NOTICE를 본다.
+- id: 1.2.1
+  category: 8
+  cwe:
+  - CWE-79
+  level: 1
+  chapter: Encoding and Sanitization
+  description: Verify that output encoding for an HTTP response, HTML document, or XML document is relevant for the context
+    required, such as encoding the relevant characters for HTML elements, HTML attributes, HTML comments, CSS, or HTTP header
+    fields.
+- id: 1.2.2
+  category: 8
+  cwe:
+  - CWE-79
+  - CWE-601
+  level: 1
+  chapter: Encoding and Sanitization
+  description: 'Verify that when dynamically building URLs, untrusted data is encoded according to its context. Ensure that
+    only safe URL protocols are permitted (e.g., disallow javascript: or data:).'
+- id: 1.2.3
+  category: 8
+  cwe:
+  - CWE-79
+  level: 1
+  chapter: Encoding and Sanitization
+  description: Verify that output encoding or escaping is used when dynamically building JavaScript content (including JSON),
+    to avoid JavaScript and JSON injection.
+- id: 1.2.4
+  category: 1
+  cwe:
+  - CWE-89
+  level: 1
+  chapter: Encoding and Sanitization
+  description: Verify that data selection or database queries use parameterized queries, ORMs, entity frameworks, or are otherwise
+    protected from SQL Injection and other database injection attacks.
+- id: 1.3.1
+  category: 8
+  cwe:
+  - CWE-79
+  level: 1
+  chapter: Encoding and Sanitization
+  description: Verify that all untrusted HTML input from WYSIWYG editors or similar is sanitized using a well-known and secure
+    HTML sanitization library or framework feature.
+- id: 2.1.1
+  category: 5
+  cwe:
+  - CWE-20
+  level: 1
+  chapter: Validation and Business Logic
+  description: Verify that input validation is performed on all user-supplied data, ensuring data type, length, range, and
+    format requirements are enforced.
+- id: 6.1.1
+  category: 4
+  cwe:
+  - CWE-916
+  level: 1
+  chapter: Authentication
+  description: Verify that passwords are stored using an approved one-way key derivation or password hashing function.
+- id: 6.2.1
+  category: 7
+  cwe:
+  - CWE-640
+  level: 1
+  chapter: Authentication
+  description: Verify that credential recovery does not reveal the current password and that the new password is not sent
+    in clear text to the user.
+- id: 7.1.1
+  category: 4
+  cwe:
+  - CWE-330
+  level: 1
+  chapter: Session Management
+  description: Verify that session tokens are generated using a cryptographically secure pseudo-random number generator.
+- id: 7.2.1
+  category: 7
+  cwe:
+  - CWE-613
+  level: 1
+  chapter: Session Management
+  description: Verify that session tokens are invalidated when the user logs out.
+- id: 7.3.1
+  category: 7
+  cwe:
+  - CWE-614
+  - CWE-1004
+  level: 1
+  chapter: Session Management
+  description: Verify that cookie-based session tokens have the Secure, HttpOnly, and SameSite attributes set.
+- id: 8.1.1
+  category: 2
+  cwe:
+  - CWE-602
+  level: 1
+  chapter: Authorization
+  description: Verify that access control rules are enforced on a trusted service layer and not on the client side.
+- id: 8.1.2
+  category: 2
+  cwe:
+  - CWE-639
+  level: 1
+  chapter: Authorization
+  description: Verify that the application protects against insecure direct object references (IDOR).
+- id: 9.1.1
+  category: 7
+  cwe:
+  - CWE-345
+  level: 1
+  chapter: Self-contained Tokens
+  description: Verify that self-contained tokens (such as JWT) are validated using a trusted method, including signature verification.
+- id: 11.1.1
+  category: 4
+  cwe:
+  - CWE-327
+  level: 1
+  chapter: Cryptography
+  description: Verify that only approved cryptographic algorithms are used, such as AES-256, RSA-2048+, SHA-256+.
+- id: 11.1.2
+  category: 4
+  cwe:
+  - CWE-326
+  - CWE-321
+  level: 1
+  chapter: Cryptography
+  description: Verify that cryptographic keys are generated with sufficient entropy and managed securely.
+- id: 12.1.1
+  category: 4
+  cwe:
+  - CWE-319
+  level: 1
+  chapter: Secure Communication
+  description: Verify that TLS is used for all connections and that insecure fallbacks are not possible.
+- id: 13.1.1
+  category: 3
+  cwe:
+  - CWE-209
+  level: 1
+  chapter: Configuration
+  description: Verify that sensitive data is not exposed in error messages, stack traces, or debug information.
+- id: 14.1.1
+  category: 3
+  cwe:
+  - CWE-532
+  level: 1
+  chapter: Data Protection
+  description: Verify that sensitive data is not logged in application logs.
+- id: 14.2.1
+  category: 7
+  cwe:
+  - CWE-798
+  level: 1
+  chapter: Data Protection
+  description: Verify that credentials and secrets are not hardcoded in source code.
+- id: 14.3.1
+  category: 4
+  cwe:
+  - CWE-311
+  level: 1
+  chapter: Data Protection
+  description: Verify that sensitive data at rest is encrypted using approved algorithms.
+- id: 4.2.1
+  category: 5
+  cwe:
+  - CWE-915
+  level: 1
+  chapter: API and Web Services
+  description: Verify that the application is not vulnerable to mass assignment by restricting which fields can be set through
+    user input.
+- id: 10.1.1
+  category: 7
+  cwe:
+  - CWE-345
+  - CWE-287
+  level: 1
+  chapter: OAuth and OIDC
+  description: Verify that OAuth/OIDC tokens are validated for audience, issuer, and expiration before granting access.
+- id: 8.2.1
+  category: 2
+  cwe:
+  - CWE-269
+  level: 1
+  chapter: Authorization
+  description: Verify that the application prevents privilege escalation by enforcing role checks at the service layer.
+- id: 14.1.2
+  category: 3
+  cwe:
+  - CWE-532
+  level: 1
+  chapter: Data Protection
+  description: Verify that personally identifiable information (PII) such as email addresses, phone numbers, and financial
+    data is not written to application logs.
+- id: 15.1.1
+  category: 6
+  cwe:
+  - CWE-367
+  level: 2
+  chapter: Business Logic
+  description: Verify that the application is protected against time-of-check to time-of-use (TOCTOU) race conditions in security-critical
+    operations.
+- id: 6.4.1
+  category: 7
+  cwe:
+  - CWE-308
+  level: 2
+  chapter: Authentication
+  description: Verify that multi-factor authentication cannot be bypassed through alternative authentication paths or fallback
+    mechanisms.
