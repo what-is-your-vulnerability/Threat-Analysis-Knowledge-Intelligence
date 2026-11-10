@@ -103,6 +103,20 @@ def test_scanner_only_issue_gone_with_scanner_running_is_resolved(tmp_path):
 
 def test_scanner_only_issue_gone_with_scanner_off_is_unverifiable(tmp_path):
     before = _report_with(tmp_path / "a", findings=[SCANNER_FINDING])
-    off = {"subject": "semgrep", "target": "*", "state": "deferred", "reason": "꺼짐"}
+    off = {"subject": "scanner:*", "target": "*", "state": "deferred", "reason": "등록된 스캐너 없음"}
     after = _report_with(tmp_path / "b", ledger=[off])
     assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "unverifiable")]
+
+
+def test_scanner_only_issue_gone_with_failed_scanner_is_unverifiable(tmp_path):
+    before = _report_with(tmp_path / "a", findings=[SCANNER_FINDING])
+    failed = {"subject": "scanner:semgrep", "target": "*", "state": "not_seen", "reason": "Docker 없음"}
+    after = _report_with(tmp_path / "b", ledger=[failed])
+    assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "unverifiable")]
+
+
+def test_scanner_only_issue_gone_with_only_language_skip_is_resolved(tmp_path):
+    before = _report_with(tmp_path / "a", findings=[SCANNER_FINDING])
+    skipped = {"subject": "scanner:codeql", "target": "*", "state": "deferred", "reason": "대상 언어 파일 없음 (java)"}
+    after = _report_with(tmp_path / "b", ledger=[skipped])
+    assert [(i.case_id, i.change) for i in compare_runs(before, after)] == [("f1", "resolved")]

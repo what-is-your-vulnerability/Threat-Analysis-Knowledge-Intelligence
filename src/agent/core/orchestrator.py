@@ -12,8 +12,8 @@ from agent.adapters.lang.java_index import build_index
 from agent.adapters.lang.mybatis import parse_mappers
 from agent.adapters.lang.spring import extract_spring
 from agent.adapters.repo.local import check_allowed, open_target
+from agent.adapters.scanner.docker import keep_snapshot_alerts, plan_scanners, run_scanner
 from agent.adapters.scanner.sarif import coverage_gaps
-from agent.adapters.scanner.semgrep import run_semgrep
 from agent.config import AgentConfig
 from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
 from agent.llm.roles import investigate, propose_fix, review
@@ -169,15 +169,19 @@ def _auto_slices(snapshot: Snapshot, design, result: RunResult, index, mappers, 
 
 
 def _run_scanners(snapshot: Snapshot, config: AgentConfig, out: Path, result: RunResult) -> tuple[list, set[str]]:
-    if not config.semgrep.enabled:
-        result.ledger.append(LedgerCell(subject="semgrep", target="*", state=LedgerState.deferred,
-                                        reason="스캐너가 꺼져 있어 실행하지 않음"))
-        return [], set()
-    outcome = run_semgrep(snapshot, config.semgrep, out)
-    if outcome.status != Capability.supported:
-        result.ledger.append(LedgerCell(subject="semgrep", target="*", state=LedgerState.not_seen,
-                                        reason="; ".join(outcome.errors) or outcome.status.value))
-    return outcome.alerts, outcome.covered_cwes
+    runnable, cells = plan_scanners(config.scanners, snapshot)
+    result.ledger += cells
+    alerts, covered = [], set()
+    for spec in runnable:
+        outcome = run_scanner(spec, snapshot, out)
+        if outcome.status != Capability.supported:
+            result.ledger.append(LedgerCell(subject=f"scanner:{spec.name}", target="*", state=LedgerState.not_seen,
+                                            reason="; ".join(outcome.errors) or outcome.status.value))
+        alerts += outcome.alerts
+        covered |= outcome.covered_cwes
+    alerts, dropped = keep_snapshot_alerts(alerts, snapshot)
+    result.ledger += dropped
+    return alerts, covered
 
 
 CODE_LANGUAGES = {"typescript", "javascript", "python", "c", "proc"}
