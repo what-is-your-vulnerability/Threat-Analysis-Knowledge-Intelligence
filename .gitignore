@@ -11,3 +11,5 @@ __pycache__/
 eval/reports/**/row-hits.csv
 eval/reports/**/stability.csv
 eval/reports/bc-1st/
+# 정본 검사 결과에는 정본 코드 인용과 가린 프롬프트가 들어 있어 커밋하지 않는다.
+eval/reports/canonical-d1/
