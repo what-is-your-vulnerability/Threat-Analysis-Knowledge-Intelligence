@@ -11,8 +11,10 @@ from tree_sitter import Node
 
 from agent.adapters.lang.java_index import Annotation, JavaIndex, JavaMethod, _text
 from agent.adapters.lang.treesitter import walk
+from agent.adapters.repo.local import FORBIDDEN_CHILD_NAMES
 from agent.config import RULES_DIR
 from agent.schemas.models import Capability, Certainty, EntryPoint, Guard, Snapshot
+from agent.steps.scope import EXCLUDED_DIRS
 
 PLACEHOLDER_RE = re.compile(r"\$\{([^}:]+)(?::([^}]*))?\}")
 PATH_PARAM_RE = re.compile(r"\{[^}]*\}")
@@ -46,7 +48,7 @@ class _Security:
     filters: list[Guard] = field(default_factory=list)
     interceptors: list[tuple[Guard, list[str], list[str]]] = field(default_factory=list)
     incomplete: str | None = None
-    method_security: bool = False
+    method_security: set[str] = field(default_factory=set)  # 실제로 켜진 메서드 보안 애너테이션
 
 
 def _string(node: Node) -> str | None:
@@ -184,7 +186,8 @@ def _read_filters(index: JavaIndex, security: _Security, capabilities: dict) -> 
             order += 1
         for method in cls.methods:
             body = method.node.child_by_field_name("body")
-            if method.return_type == "SecurityFilterChain" and body is not None:
+            legacy = method.name == "configure" and "WebSecurityConfigurerAdapter" in parents
+            if (method.return_type == "SecurityFilterChain" or legacy) and body is not None:
                 chains += 1
                 _read_url_rules(body, cls.file, security)
                 for node in walk(body):
@@ -198,6 +201,9 @@ def _read_filters(index: JavaIndex, security: _Security, capabilities: dict) -> 
                 capabilities["guards"] = Capability.partial
             if method.name == "addInterceptors" and body is not None:
                 _read_interceptors(body, cls.file, security)
+        if "Aspect" in names:
+            security.incomplete = f"@Aspect 권한 검사를 풀지 못함: {cls.name}"
+            capabilities["guards"] = Capability.partial
     if chains > 1:
         security.incomplete = "SecurityFilterChain이 여러 개라 어느 체인이 적용되는지 풀지 못함"
         capabilities["guards"] = Capability.partial
@@ -307,12 +313,33 @@ def _is_spring(snapshot: Snapshot, index: JavaIndex) -> bool:
     return any(full.startswith("org.springframework") for c in index.all_classes() for full in c.imports.values())
 
 
+BUILD_FILES = {"pom.xml", "build.gradle", "build.gradle.kts"}
+# 스위치마다 옵션이 없을 때 켜지는 애너테이션(Spring Security 기본값).
+METHOD_SECURITY_OPTIONS = {"prePostEnabled": "PreAuthorize", "securedEnabled": "Secured", "jsr250Enabled": "RolesAllowed"}
+METHOD_SECURITY_DEFAULTS = {"EnableMethodSecurity": {"PreAuthorize"}, "EnableGlobalMethodSecurity": set()}
+
+
+def _enabled_method_security(index: JavaIndex) -> set[str]:
+    enabled: set[str] = set()
+    for cls in index.all_classes():
+        for annotation in cls.annotations:
+            if annotation.name not in METHOD_SECURITY_DEFAULTS:
+                continue
+            on = set(METHOD_SECURITY_DEFAULTS[annotation.name])
+            for option, target in METHOD_SECURITY_OPTIONS.items():
+                values = _annotation_values(annotation, (option,))
+                if values:
+                    (on.add if _text(values[0]) == "true" else on.discard)(target)
+            enabled |= on
+    return enabled
+
+
 def _has_security_dependency(snapshot: Snapshot) -> bool:
-    return any(
-        e.path.rsplit("/", 1)[-1] == "pom.xml"
-        and "spring-boot-starter-security" in (snapshot.root / e.path).read_text(encoding="utf-8", errors="replace")
-        for e in snapshot.files
-    )
+    # Gradle 파일은 분석 대상 확장자가 아니라 목록 밖에 있으므로 폴더에서 직접 읽는다.
+    skipped = FORBIDDEN_CHILD_NAMES | EXCLUDED_DIRS
+    builds = [p for p in snapshot.root.rglob("*")
+              if p.name in BUILD_FILES and not skipped.intersection(p.relative_to(snapshot.root).parts)]
+    return any("spring-boot-starter-security" in p.read_text(encoding="utf-8", errors="replace") for p in builds)
 
 
 def _module_name(snapshot: Snapshot) -> str:
@@ -374,7 +401,7 @@ def _build_entry(snapshot, index, cls, method, annotation, http_method, path, ap
         effective.append(_access_guard(rule.access))
 
     for text, source in _method_guards(method, cls.annotations):
-        if security.method_security:
+        if source.name in security.method_security:
             guards.append(Guard(order=200, symbol=text, file=cls.file, line=source.line, scope="route"))
             effective.append(text)
         else:
@@ -406,8 +433,7 @@ def extract_spring(snapshot: Snapshot, index: JavaIndex) -> SpringResult:
     result.capabilities = {"entrypoints": Capability.supported, "guards": Capability.supported}
     settings = _load_settings(snapshot)
     context = settings.get("server.servlet.context-path", "")
-    security = _Security(method_security=any(
-        a.name in rules["method_security_switch"] for c in index.all_classes() for a in c.annotations))
+    security = _Security(method_security=_enabled_method_security(index))
     _read_filters(index, security, result.capabilities)
     if not security.rules and not security.incomplete and _has_security_dependency(snapshot):
         security.incomplete = "Spring Security를 쓰지만 URL 규칙을 찾지 못함"

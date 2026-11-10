@@ -57,6 +57,7 @@ class JavaMethod:
     return_type: str | None
     annotations: list[Annotation]
     node: Node = field(repr=False, default=None)
+    owner: JavaClass | None = field(repr=False, default=None)  # 같은 이름 클래스가 여럿이어도 자기 클래스를 가리킨다
 
 
 @dataclass
@@ -192,7 +193,7 @@ class JavaIndex:
                 name = item.child_by_field_name("name")
                 if name is not None:
                     params[_text(name)] = _base_type(item.child_by_field_name("type"))
-        return JavaMethod(symbol="", class_name=cls.name, name=_text(node.child_by_field_name("name")), file=cls.file,
+        return JavaMethod(owner=cls, symbol="", class_name=cls.name, name=_text(node.child_by_field_name("name")), file=cls.file,
                           start=node.start_point[0] + 1, end=node.end_point[0] + 1, params=params,
                           return_type=_base_type(node.child_by_field_name("type")), annotations=_annotations(node),
                           node=node)
@@ -201,9 +202,11 @@ class JavaIndex:
         for classes in self.classes.values():
             for cls in classes:
                 names = [m.name for m in cls.methods]
+                # 패키지만 다른 같은 이름 클래스가 있으면 기호가 겹치지 않게 패키지를 붙인다.
+                prefix = f"{cls.package}.{cls.name}" if len(classes) > 1 and cls.package else cls.name
                 for method in cls.methods:
                     overloaded = names.count(method.name) > 1
-                    method.symbol = f"{cls.name}.{method.name}" + (f"/{len(method.params)}" if overloaded else "")
+                    method.symbol = f"{prefix}.{method.name}" + (f"/{len(method.params)}" if overloaded else "")
                     self._by_method[method.symbol] = method
                     self._method_names.setdefault(method.name, []).append(method)
 
@@ -211,7 +214,9 @@ class JavaIndex:
     def all_classes(self) -> list[JavaClass]:
         return [c for classes in self.classes.values() for c in classes]
 
-    def cls(self, name: str | None) -> JavaClass | None:
+    def cls(self, name: str | JavaClass | None) -> JavaClass | None:
+        if isinstance(name, JavaClass):
+            return name
         found = self.classes.get(name or "")
         return found[0] if found else None
 
@@ -284,12 +289,12 @@ class JavaIndex:
             name = _text(node)
             if name in types:
                 return types[name]
-            field_type = self._field_type(method.class_name, name)
+            field_type = self._field_type(method.owner, name)
             if field_type:
                 return field_type
             return name if name[:1].isupper() else None
         if node.type == "this":
-            return method.class_name
+            return method.owner
         if node.type == "field_access":
             owner = self._expr_type(node.child_by_field_name("object"), method, types)
             return self._field_type(owner, _text(node.child_by_field_name("field"))) if owner else None
@@ -297,7 +302,7 @@ class JavaIndex:
             return _base_type(node.child_by_field_name("type"))
         if node.type == "method_invocation":
             owner_node = node.child_by_field_name("object")
-            owner = self._expr_type(owner_node, method, types) if owner_node is not None else method.class_name
+            owner = self._expr_type(owner_node, method, types) if owner_node is not None else method.owner
             if owner is None:
                 return None
             name = _text(node.child_by_field_name("name"))
@@ -321,12 +326,10 @@ class JavaIndex:
         pending = [class_name]
         while pending:
             current = pending.pop(0)
-            if current in seen:
-                continue
-            seen.add(current)
             cls = self.cls(current)
-            if cls is None:
+            if cls is None or id(cls) in seen:
                 continue
+            seen.add(id(cls))
             matches = [m for m in cls.methods if m.name == name]
             exact = [m for m in matches if arg_count is None or len(m.params) == arg_count]
             if exact or matches:
@@ -339,12 +342,12 @@ class JavaIndex:
         pending = [class_name]
         while pending:
             current = pending.pop(0)
-            if current in seen:
-                continue
-            seen.add(current)
             cls = self.cls(current)
             if cls is None:
                 return True
+            if id(cls) in seen:
+                continue
+            seen.add(id(cls))
             pending += [p for p in [cls.super_class, *cls.interfaces] if p]
         return False
 
@@ -363,7 +366,7 @@ class JavaIndex:
         cls = self.cls(owner)
         if found:
             method = found[0]
-            declaring = self.cls(method.class_name)
+            declaring = method.owner
             if declaring.kind == "interface":
                 implementations = [
                     m.symbol
@@ -387,14 +390,16 @@ class JavaIndex:
             receiver_node = call.node.child_by_field_name("object") if call.node is not None else None
 
         if receiver_node is None:
-            return self._resolve_in_class(method.class_name, call)
+            return self._resolve_in_class(method.owner, call)
         if receiver_node.type == "super":
-            parent = self.cls(method.class_name).super_class
+            parent = method.owner.super_class
             return self._resolve_in_class(parent, call) if self.cls(parent) else CallTargets([], Certainty.code_read, True)
 
         owner = self._expr_type(receiver_node, method, self._local_types(method))
         if owner == "Method" and call.name in REFLECTION_METHODS:
             return CallTargets([], Certainty.inferred)
+        if isinstance(owner, str) and len(self.classes.get(owner, [])) > 1:
+            return CallTargets([], Certainty.inferred)  # 같은 이름 클래스가 여럿이라 어느 쪽인지 모른다
         if owner is not None and self.cls(owner) is not None:
             return self._resolve_in_class(owner, call)
         if owner is not None:
