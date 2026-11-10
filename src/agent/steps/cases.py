@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from agent.adapters.scanner.semgrep import OUT_OF_SCOPE_CWES
+from agent.adapters.scanner.sarif import OUT_OF_SCOPE_CWES
 from agent.schemas.models import (
     Budget,
     Case,

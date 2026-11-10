@@ -12,7 +12,8 @@ from agent.adapters.lang.java_index import build_index
 from agent.adapters.lang.mybatis import parse_mappers
 from agent.adapters.lang.spring import extract_spring
 from agent.adapters.repo.local import check_allowed, open_target
-from agent.adapters.scanner.semgrep import coverage_gaps, run_semgrep
+from agent.adapters.scanner.sarif import coverage_gaps
+from agent.adapters.scanner.semgrep import run_semgrep
 from agent.config import AgentConfig
 from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
 from agent.llm.roles import investigate, propose_fix, review
@@ -167,16 +168,16 @@ def _auto_slices(snapshot: Snapshot, design, result: RunResult, index, mappers, 
     return build_slices(snapshot, spring.entrypoints, index, mappers, design_docs=design)
 
 
-def _run_scanners(snapshot: Snapshot, config: AgentConfig, out: Path, result: RunResult) -> list:
+def _run_scanners(snapshot: Snapshot, config: AgentConfig, out: Path, result: RunResult) -> tuple[list, set[str]]:
     if not config.semgrep.enabled:
         result.ledger.append(LedgerCell(subject="semgrep", target="*", state=LedgerState.deferred,
                                         reason="스캐너가 꺼져 있어 실행하지 않음"))
-        return []
+        return [], set()
     outcome = run_semgrep(snapshot, config.semgrep, out)
     if outcome.status != Capability.supported:
         result.ledger.append(LedgerCell(subject="semgrep", target="*", state=LedgerState.not_seen,
                                         reason="; ".join(outcome.errors) or outcome.status.value))
-    return outcome.alerts
+    return outcome.alerts, outcome.covered_cwes
 
 
 CODE_LANGUAGES = {"typescript", "javascript", "python", "c", "proc"}
@@ -278,7 +279,8 @@ def _scan(target, *, design, out, config: AgentConfig, mode: RunMode, slices_fil
         if slices is None:
             return _finish(result, out, 3, "Spring 프로젝트인데 컨트롤러를 찾지 못했습니다.")
     result.slices = slices
-    alerts = [*alerts, *_run_scanners(snapshot, config, out, result)]
+    scanner_alerts, covered_cwes = _run_scanners(snapshot, config, out, result)
+    alerts = [*alerts, *scanner_alerts]
     lenses = load_lenses()
     result.cases = cases = build_cases(slices, list(rules), config.budget, lenses=lenses, alerts=alerts)
     if previous is not None:
@@ -308,7 +310,7 @@ def _scan(target, *, design, out, config: AgentConfig, mode: RunMode, slices_fil
     investigated = {v.case_id for v in result.verdicts if v.evidence is not None}
     failed_alerts = {c.case_id for c in cases if c.source == CaseSource.alert and c.case_id not in investigated}
     result.findings += pass_through_alerts(alerts, slices, failed_alerts)
-    result.ledger += coverage_gaps(config.semgrep.rule_files() if config.semgrep.enabled else [])
+    result.ledger += coverage_gaps(covered_cwes)
 
     _finish(result, out)
     if previous is not None:
