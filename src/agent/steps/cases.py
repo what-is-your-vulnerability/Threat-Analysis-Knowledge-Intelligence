@@ -120,6 +120,17 @@ def alerts_by_slice(alerts, slices: list[Slice]) -> dict[str, list[Fact]]:
     return grouped
 
 
+def _flow_hops(alert: Fact) -> list[Hop]:
+    """도구 데이터 흐름("file:line")의 앞 단계들. 마지막 단계는 경고 위치(싱크)와 같아 뺀다."""
+    hops = []
+    for step in alert.detail.get("flow", [])[:-1]:
+        file, _, line = step.rpartition(":")
+        if line.isdigit():  # 줄 번호가 없는 단계("file:None")는 위치를 지어내지 않고 뺀다
+            hops.append(Hop(file=file, start=int(line), end=int(line), quote="", role=Role.propagation,
+                            certainty=Certainty.tool_confirmed))
+    return hops
+
+
 def pass_through_alerts(alerts, slices: list[Slice], failed_case_ids=frozenset()) -> list[Finding]:
     """AI가 판정하지 않는 경고를 도구 결과 그대로 이슈로 만든다.
 
@@ -132,8 +143,8 @@ def pass_through_alerts(alerts, slices: list[Slice], failed_case_ids=frozenset()
             continue
         rule = alert.detail.get("rule", "scanner")
         message = alert.detail.get("message", rule)
-        hops = [Hop(file=alert.file, start=alert.line or 1, end=alert.line or 1, role=Role.sink,
-                    quote=alert.detail.get("snippet", ""), certainty=Certainty.tool_confirmed)]
+        hops = [*_flow_hops(alert), Hop(file=alert.file, start=alert.line or 1, end=alert.line or 1, role=Role.sink,
+                                        quote=alert.detail.get("snippet", ""), certainty=Certainty.tool_confirmed)]
         evidence = EvidencePath(claim=Claim.defect, statement=message, cwe=alert.detail.get("cwe"), hops=hops,
                                 basis=[f"{alert.tool} {rule}"])
         findings.append(Finding(
