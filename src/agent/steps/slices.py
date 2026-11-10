@@ -135,7 +135,8 @@ def _line_of(snapshot: Snapshot, path: str, line: int) -> str:
 
 def _method_hop(snapshot, method: JavaMethod, role: Role, certainty: Certainty) -> Hop:
     line = method.node.child_by_field_name("name").start_point[0] + 1
-    return Hop(file=method.file, start=line, end=line, quote=_line_of(snapshot, method.file, line), role=role,
+    # end는 메서드 끝이다. 구현 근거가 이 호출 경로 안에 있는지 확인할 때 범위로 쓴다.
+    return Hop(file=method.file, start=line, end=method.end, quote=_line_of(snapshot, method.file, line), role=role,
                relation=Relation.calls, certainty=certainty)
 
 
@@ -351,6 +352,25 @@ def _trim(files: _FileSet, max_lines: int) -> tuple[list[str], bool]:
     return dropped, guard_dropped
 
 
+def _guard_files(entry: EntryPoint, index: JavaIndex) -> list[str]:
+    files = set()
+    for guard in entry.middleware:
+        if guard.scope in ("global", "prefix"):
+            files.add(guard.file)
+            target = index.cls(guard.symbol)
+            files.add(target.file if target else None)
+    return sorted(f for f in files if f)
+
+
+def locate_handlers(slices: list[Slice], index: JavaIndex) -> None:
+    """손 작성 묶음의 흐름에 핸들러 위치를 채운다. 찾지 못하면 비워 두어 구현 확인을 내지 않게 한다."""
+    for slice_ in slices:
+        for flow in slice_.flows:
+            method = index.method(flow.handler_symbol or "")
+            if method is not None and flow.handler_file is None:
+                flow.handler_file, flow.handler_start, flow.handler_end = method.file, method.start, method.end
+
+
 def _make_slice(name, reaches, table, requirements, snapshot, index, others, max_lines) -> Slice:
     files = _collect_files(reaches, snapshot, index)
     truncated, guard_dropped = _trim(files, max_lines)
@@ -358,7 +378,9 @@ def _make_slice(name, reaches, table, requirements, snapshot, index, others, max
         Flow(flow_id=flow_id(r.entry.method, r.entry.path_template), method=r.entry.method, path=r.entry.path_template,
              handler_symbol=r.entry.handler_symbol, hops=r.hops, guards=r.entry.effective_guards,
              middleware_complete=r.entry.middleware_complete and not guard_dropped,
-             unresolved=[*r.unresolved, *([r.entry.unresolved_reason] if r.entry.unresolved_reason else [])])
+             unresolved=[*r.unresolved, *([r.entry.unresolved_reason] if r.entry.unresolved_reason else [])],
+             handler_file=r.entry.handler_file, handler_start=r.entry.handler_start, handler_end=r.entry.handler_end,
+             guard_files=_guard_files(r.entry, index))
         for r in reaches
     ]
     slice_ = Slice(

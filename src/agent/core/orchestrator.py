@@ -42,7 +42,7 @@ from agent.steps.lenses import load_lenses
 from agent.steps.recheck import RecheckItem, compare_runs
 from agent.steps.report import write_report
 from agent.steps.scope import scan_scope
-from agent.steps.slices import build_slices, fallback_slices, load_slices, render_slice
+from agent.steps.slices import build_slices, fallback_slices, load_slices, locate_handlers, render_slice
 from agent.steps.verdict import decide, group_findings
 from agent.tools.readonly import ReadOnlyTools
 
@@ -210,6 +210,7 @@ def run_scan(
     tools = ReadOnlyTools(snapshot, index, mappers, spring.entrypoints, design)
     if slices_file is not None:
         slices = load_slices(Path(slices_file), snapshot)
+        locate_handlers(slices, index)
     else:
         slices = _auto_slices(snapshot, design, result, index, mappers, spring)
         if slices is None:

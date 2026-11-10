@@ -96,11 +96,23 @@ def _read(hop_file: str, snapshot: Snapshot, listed: set[str], cache: dict[str, 
     return cache[hop_file]
 
 
-def _claim_failures(path: EvidencePath, flows: list[Flow]) -> list[CheckFailure]:
+def _inside(hop: Hop, flow: Flow) -> bool:
+    if hop.file in flow.guard_files:
+        return True
+    spans = [(flow.handler_file, flow.handler_start, flow.handler_end), *((h.file, h.start, h.end) for h in flow.hops)]
+    return any(file == hop.file and start is not None and start <= hop.start and hop.end <= end
+               for file, start, end in spans)
+
+
+def _claim_failures(path: EvidencePath, flows: list[Flow], hops: list[Hop]) -> list[CheckFailure]:
     failures: list[CheckFailure] = []
-    if path.claim == Claim.implemented:
+    if path.claim in (Claim.implemented, Claim.not_applicable):
         if not path.hops:
             failures.append(CheckFailure.quote_not_found)
+        # 다른 API의 검사를 이 API의 근거로 인용하는 것을 막는다. 위치를 모르는 흐름이면 확인할 수 없다.
+        elif not any(all(_inside(h, flow) for h in hops) for flow in flows):
+            failures.append(CheckFailure.off_flow)
+    if path.claim == Claim.implemented:
         quotes = [h.quote for h in path.hops]
         bound = path.checked_value and path.used_value and all(
             any(value in q for q in quotes) for value in (path.checked_value, path.used_value)
@@ -116,10 +128,11 @@ def _claim_failures(path: EvidencePath, flows: list[Flow]) -> list[CheckFailure]
             failures.append(CheckFailure.unresolved_links)
         if not path.basis:
             failures.append(CheckFailure.no_basis)
-    elif path.claim == Claim.defect:
-        if not path.hops or path.hops[0].role != Role.entrypoint or path.hops[-1].role not in (Role.sink, Role.outcome):
-            failures.append(CheckFailure.path_broken)
-    elif path.claim == Claim.not_applicable and not path.basis:
+    elif path.claim == Claim.defect and (
+        not path.hops or path.hops[0].role != Role.entrypoint or path.hops[-1].role not in (Role.sink, Role.outcome)
+    ):
+        failures.append(CheckFailure.path_broken)
+    if path.claim == Claim.not_applicable and not path.basis:
         failures.append(CheckFailure.no_basis)
     return failures
 
@@ -141,7 +154,7 @@ def check_evidence(path: EvidencePath, snapshot: Snapshot, flows: list[Flow]) ->
             fixed.append(hop)
             continue
         fixed.append(located)
-        if path.claim == Claim.implemented and _is_only_comment_or_string(located, source):
+        if path.claim in (Claim.implemented, Claim.not_applicable) and _is_only_comment_or_string(located, source):
             failures.append(CheckFailure.quote_in_comment)
-    failures.extend(_claim_failures(path, flows))
+    failures.extend(_claim_failures(path, flows, fixed))
     return EvidenceCheck(passed=not failures, failures=list(dict.fromkeys(failures)), fixed_hops=fixed)
