@@ -299,6 +299,8 @@ def test_scan_shows_alerts_to_rule_investigation(scripted, tmp_path):
     alert = Fact(kind="alert", file="src/main/java/demo/member/MemberService.java", line=22, tool="semgrep",
                  detail={"cwe": "CWE-89", "rule": "sql", "message": "SQL 조립 경고 원문"})
     _scan(scripted, tmp_path, alerts=[alert])
-    rule_requests = [json.dumps(q, ensure_ascii=False) for q in scripted.requests]
-    rule_requests = [q for q in rule_requests if "대상 API" in q]
+    requests = [json.dumps(q, ensure_ascii=False) for q in scripted.requests]
+    rule_requests = [q for q in requests if "대상 API" in q]
     assert rule_requests and all("=== 정적분석 경고" in q and "SQL 조립 경고 원문" in q for q in rule_requests)
+    review_requests = [q for q in requests if "재검토한다" in q]
+    assert review_requests and not any("SQL 조립 경고 원문" in q for q in review_requests)  # 재검토는 경고를 보지 않는다

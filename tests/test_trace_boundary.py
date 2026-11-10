@@ -14,6 +14,7 @@ from agent.core.orchestrator import run_scan
 from agent.llm.gateway import LlmGateway
 from agent.llm.roles import investigate
 from agent.schemas.models import Budget, Case, CaseSource
+from agent.steps.cases import load_rules
 from agent.steps.scope import scan_scope
 from agent.tools.readonly import ReadOnlyTools
 
@@ -80,3 +81,15 @@ def test_env_tracing_alone_sends_nothing(fake, tmp_path, recorded, monkeypatch):
     fake.responses.append({"match": "lens_id별로", "content": '{"claims": []}'})
     run_scan(FIX / "vulnerable", design=[], out=tmp_path, config=make_config(fake), slices_file=FIX / "slices.yml")
     assert seen == [] and posts == []
+
+
+def test_scan_runs_keep_code_out(fake, tmp_path, recorded):
+    seen, posts = recorded
+    code = "public void delete(@PathVariable long id)"  # 묶음 글과 재검토·수정 제안에 들어가는 코드
+    fake.responses.extend(json.loads((FIX / "fake_script.json").read_text(encoding="utf-8")))
+    run_scan(FIX / "vulnerable", design=[FIX / "design.md"], out=tmp_path, config=make_config(fake, langsmith_project="t"),
+             slices_file=FIX / "slices.yml", rules=load_rules(FIX / "rules.yml"))
+    graph = [(data, result) for data, result in seen if not tracing.is_llm_payload(data)]
+    assert posts and any("slice_text" in data for data, _ in graph)  # 조사 항목 그래프의 단계 기록이 지났다
+    assert all(code not in _dump(result) for _, result in graph)
+    assert any(code in _dump(result) for data, result in seen if tracing.is_llm_payload(data))

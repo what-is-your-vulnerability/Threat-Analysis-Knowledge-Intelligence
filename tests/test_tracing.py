@@ -1,4 +1,4 @@
-"""LangSmith 추적은 설정으로 켰을 때만 동작하고, 코드 원문을 조사 항목 기록에 넣지 않는다."""
+"""LangSmith 추적은 설정으로 켰을 때만 동작한다. 기록 내용의 경계는 test_trace_boundary.py가 본다."""
 
 import contextlib
 import json
@@ -11,7 +11,7 @@ from agent.config import AgentConfig
 from agent.core import orchestrator
 from agent.llm import gateway as gateway_module
 from agent.llm.gateway import LlmGateway
-from agent.schemas.models import Budget, Case, CaseSource, Slice
+from agent.schemas.models import Budget
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 
@@ -47,15 +47,6 @@ def test_wrapped_client_still_calls_the_model(fake, tmp_path, monkeypatch):
     response = gw.complete("investigate", [{"role": "user", "content": "x"}], prompt_version="p_v1", budget=Budget(),
                            case_id="c1")
     assert response.content == "ok" and "langsmith_extra" not in json.dumps(fake.requests[0])
-
-
-def test_case_trace_keeps_code_out():
-    case = Case(case_id="c1", source=CaseSource.rule, subject_id="R1", question="삭제는 관리자만", slice_id="s")
-    inputs = {"case": case, "slice_": Slice(slice_id="s", name="admin"), "snapshot": object(), "gateway": object(),
-              "rule": None, "ledger": [], "tools": object(), "lenses": ()}
-    traced = orchestrator._case_trace_inputs(inputs)
-    assert traced == {"case_id": "c1", "source": "rule", "subject": "R1", "question": "삭제는 관리자만", "slice": "admin",
-                      "flow": None}
 
 
 def _spy_context(monkeypatch):
