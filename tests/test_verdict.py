@@ -89,6 +89,38 @@ def _case(case_id, subject="R1", flow="f1"):
     return Case(case_id=case_id, source=CaseSource.rule, subject_id=subject, question="q", slice_id="s", flow_id=flow)
 
 
+def _question(case_id):
+    return Case(case_id=case_id, source=CaseSource.question, subject_id="lenses", question="q", slice_id="s")
+
+
+def _alert_case(case_id):
+    return Case(case_id=case_id, source=CaseSource.alert, subject_id="sql-rule", question="q", slice_id="s")
+
+
+def test_question_claim_merges_into_rule_finding():
+    verdicts = [decide("q", path(), PASS, [KEPT], "h"), decide("c1", path(), PASS, [KEPT], "h")]
+    findings = group_findings(verdicts, [_question("q"), _case("c1")], set())
+    assert len(findings) == 1 and findings[0].broken_rule == "R1" and findings[0].case_ids == ["c1", "q"]
+
+
+def test_question_only_finding_has_no_rule():
+    finding = group_findings([decide("q", path(), PASS, [KEPT], "h")], [_question("q")], set())[0]
+    assert finding.broken_rule is None and finding.state == VerdictState.missing_suspected
+
+
+def test_alert_case_confirms_rule_finding():
+    verdicts = [decide("a", path(), PASS, [KEPT] * 3, "h"), decide("c1", path(), PASS, [KEPT] * 3, "h")]
+    finding = group_findings(verdicts, [_alert_case("a"), _case("c1")], set())[0]
+    assert finding.tool_confirmed and finding.outcome == Outcome.block
+
+
+def test_refuted_alert_does_not_confirm():
+    refuted = decide("a", path(), PASS, [REFUTED_NO_PROOF], "h")
+    kept = decide("c1", path(), PASS, [KEPT] * 3, "h")
+    finding = group_findings([refuted, kept], [_alert_case("a"), _case("c1")], set())[0]
+    assert not finding.tool_confirmed and finding.outcome == Outcome.warn
+
+
 def test_group_findings_merges_same_root():
     verdicts = [decide("c1", path(), PASS, [KEPT], "h"), decide("c2", path(), PASS, [KEPT], "h")]
     findings = group_findings(verdicts, [_case("c1", flow="f1"), _case("c2", flow="f2")], set())

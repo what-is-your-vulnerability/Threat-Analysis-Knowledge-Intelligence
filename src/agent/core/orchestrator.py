@@ -15,6 +15,7 @@ from agent.llm.roles import investigate, propose_fix, review
 from agent.schemas.models import (
     Capability,
     Case,
+    CaseSource,
     CheckFailure,
     Claim,
     EvidenceCheck,
@@ -32,15 +33,15 @@ from agent.schemas.models import (
     Snapshot,
     Verdict,
     VerdictState,
-    make_finding_id,
 )
-from agent.steps.cases import build_cases, update_ledger
+from agent.steps.cases import build_cases, pass_through_alerts, update_ledger
 from agent.steps.evidence import check_evidence
+from agent.steps.lenses import load_lenses
 from agent.steps.recheck import RecheckItem, compare_runs
 from agent.steps.report import write_report
 from agent.steps.scope import scan_scope
 from agent.steps.slices import build_slices, fallback_slices, load_slices, render_slice
-from agent.steps.verdict import decide, group_findings, root_file
+from agent.steps.verdict import decide, group_findings
 from agent.tools.readonly import ReadOnlyTools
 
 LLM_ERRORS = (LlmCallError, LlmFormatError, BudgetExceeded, SecretLeft)
@@ -89,7 +90,7 @@ def _review_claim(claim, check, slice_text, snapshot, flows, gateway, case, sent
     return result
 
 
-def _run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot, gateway, ledger, tools) -> list[Verdict]:
+def _run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot, gateway, ledger, tools, lenses) -> list[Verdict]:
     slice_text = render_slice(slice_, snapshot)
     sent = [f.path for f in slice_.files]
     requirement = f"{rule.doc_ref}: {rule.requirement_quote}" if rule and rule.requirement_quote else None
@@ -100,12 +101,16 @@ def _run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot, ga
         if any(QUOTE_FAILURES & set(c.failures) for c in checks):
             result = investigate(case, slice_text, feedback=_quote_feedback(result.claims, checks), **ask)
     except LLM_ERRORS as e:
-        update_ledger(ledger, case, None, error=str(e))
+        update_ledger(ledger, case, None, error=str(e), lenses=lenses)
         return [decide(case.case_id, None, None, [], slice_.code_hash, error=str(e))]
 
-    update_ledger(ledger, case, result, error=None if result.claims else "주장이 없음")
-    if not result.claims:
-        return [decide(case.case_id, None, None, [], slice_.code_hash)]
+    if case.source == CaseSource.question:
+        # 답만 있고 주장이 없으면 판정을 만들지 않는다. "이상을 찾지 못함"은 구현 확인이 아니다.
+        update_ledger(ledger, case, result, lenses=lenses)
+    else:
+        update_ledger(ledger, case, result, error=None if result.claims else "주장이 없음")
+        if not result.claims:
+            return [decide(case.case_id, None, None, [], slice_.code_hash)]
 
     verdicts = []
     for claim in result.claims:
@@ -118,19 +123,14 @@ def _run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot, ga
     return verdicts
 
 
-def _add_fixes(findings, verdicts, cases, slices, snapshot, gateway) -> None:
+def _add_fixes(findings, cases, slices, snapshot, gateway) -> None:
     case_by_id = {c.case_id: c for c in cases}
     slice_by_id = {s.slice_id: s for s in slices}
-    slice_by_finding: dict[str, tuple[Case, Slice]] = {}
-    for v in verdicts:
-        if v.evidence:
-            case = case_by_id[v.case_id]
-            finding_id = make_finding_id(root_file(v.evidence), v.evidence.root_symbol, case.subject_id)
-            slice_by_finding.setdefault(finding_id, (case, slice_by_id[case.slice_id]))
     for finding in findings:
         if finding.state != VerdictState.missing_suspected:
             continue
-        case, slice_ = slice_by_finding[finding.finding_id]
+        case = case_by_id[finding.case_ids[0]]
+        slice_ = slice_by_id[case.slice_id]
         try:
             finding.fix = propose_fix(finding.evidence[0], render_slice(slice_, snapshot), gateway=gateway,
                                       case_id=case.case_id, sent_files=[f.path for f in slice_.files])
@@ -154,9 +154,11 @@ def _exit_code(result: RunResult) -> int:
     if any(f.outcome == Outcome.block for f in result.findings):
         return 2
     has_problem = any(v.state in (VerdictState.missing_suspected, VerdictState.unverified) for v in result.verdicts)
+    warned = any(f.outcome == Outcome.warn for f in result.findings)
     not_seen = any(c.state == LedgerState.not_seen for c in result.ledger)
     not_fixed = any(i.change != "resolved" for i in result.recheck)
-    return 1 if has_problem or not_seen or not_fixed or not result.verdicts else 0
+    nothing_checked = not result.verdicts and not result.ledger
+    return 1 if has_problem or warned or not_seen or not_fixed or nothing_checked else 0
 
 
 def _finish(result: RunResult, out: Path, code: int | None = None, error: str | None = None) -> RunResult:
@@ -176,6 +178,7 @@ def run_scan(
     slices_file=None,
     rules=(),
     previous=None,
+    alerts=(),
 ) -> RunResult:
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -200,7 +203,8 @@ def run_scan(
         if slices is None:
             return _finish(result, out, 3, "Spring 프로젝트인데 컨트롤러를 찾지 못했습니다.")
     result.slices = slices
-    result.cases = cases = build_cases(slices, list(rules), config.budget)
+    lenses = load_lenses()
+    result.cases = cases = build_cases(slices, list(rules), config.budget, lenses=lenses, alerts=alerts)
     slice_by_id = {s.slice_id: s for s in slices}
     rule_by_id = {r.rule_id: r for r in rules}
 
@@ -210,13 +214,14 @@ def run_scan(
                                             reason="승인되지 않았거나 맞는 API가 없음"))
     for case in cases:
         verdicts = _run_case(case, slice_by_id[case.slice_id], rule_by_id.get(case.subject_id), snapshot, gateway,
-                             result.ledger, tools)
+                             result.ledger, tools, lenses)
         for v in verdicts:
             v.manifest_ids = list(gateway.manifest_ids_by_case.get(case.case_id, []))
         result.verdicts += verdicts
 
     result.findings = group_findings(result.verdicts, cases, set())
-    _add_fixes(result.findings, result.verdicts, cases, slices, snapshot, gateway)
+    _add_fixes(result.findings, cases, slices, snapshot, gateway)
+    result.findings += pass_through_alerts(alerts, slices)
 
     _finish(result, out)
     if previous is not None:
