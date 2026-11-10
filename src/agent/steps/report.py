@@ -65,7 +65,8 @@ def write_report(result, out: Path) -> None:
         questions={c.case_id: f"고정 질문 · 묶음 {c.slice_id}" if c.source == CaseSource.question else c.question
                    for c in result.cases},
         not_seen=[c for c in data["ledger"] if c["state"] != "checked"],
-        lens_answers=[c for c in data["ledger"] if c["state"] == "checked" and c["reason"]],
+        lens_answers=[c for c in data["ledger"]
+                      if c["state"] == "checked" and c["reason"] and not c["subject"].startswith("scanner:")],
         truncated=[{"name": s.name, "reason": reason} for s in result.slices for reason in s.truncated],
     )
     (out / "report.html").write_text(html, encoding="utf-8")

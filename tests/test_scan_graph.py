@@ -104,3 +104,13 @@ def test_scanner_exception_is_not_seen_not_a_crash(fake, tmp_path, monkeypatch):
     assert (tmp_path / "o" / "report.json").exists() and r.exit_code == 1
     assert [f.statement for f in r.findings if f.tool_confirmed] == ["b 경고"]
     assert any(c.subject == "scanner:a" and c.state == LedgerState.not_seen and "KeyError" in c.reason for c in r.ledger)
+
+
+def test_successful_scanner_is_checked_but_does_not_pass_an_empty_scan(fake, tmp_path, monkeypatch):
+    monkeypatch.setattr(orchestrator, "run_scanner", lambda spec, snapshot, out: ScanOutcome(Capability.supported))
+    fake.responses.append(NO_ISSUE)
+    r = run_scan(_target(tmp_path), design=[], out=tmp_path / "o", config=make_config(fake, scanners=[_spec("a")]))
+    ran = [c for c in r.ledger if c.subject == "scanner:a"]
+    assert [(c.state, c.reason) for c in ran] == [(LedgerState.checked, "실행함")]
+    assert "scanner:a" not in (tmp_path / "o" / "report.html").read_text()  # 고정 질문 결과 표에 섞이지 않는다
+    assert orchestrator._exit_code(orchestrator.RunResult(ledger=ran)) == 1

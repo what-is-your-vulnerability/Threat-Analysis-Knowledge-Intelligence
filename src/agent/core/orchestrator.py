@@ -137,7 +137,8 @@ def _exit_code(result: RunResult) -> int:
     warned = any(f.outcome == Outcome.warn for f in result.findings)
     not_seen = any(c.state == LedgerState.not_seen for c in result.ledger)
     not_fixed = any(i.change != "resolved" for i in result.recheck)
-    nothing_checked = not result.verdicts and not any(c.state == LedgerState.checked for c in result.ledger)
+    nothing_checked = not result.verdicts and not any(
+        c.state == LedgerState.checked and not c.subject.startswith("scanner:") for c in result.ledger)
     return 1 if has_problem or warned or not_seen or not_fixed or nothing_checked else 0
 
 
@@ -207,10 +208,13 @@ def _scanner(task: dict) -> dict:
         outcome = run_scanner(spec, task["snapshot"], task["out"])
     except Exception as e:  # noqa: BLE001 - 도구 하나의 처리 오류가 다른 도구 결과와 검사 전체를 버리게 하지 않는다
         outcome = ScanOutcome(Capability.failed, errors=[f"스캐너 처리 오류: {type(e).__name__}: {e}"])
-    cells = [] if outcome.status == Capability.supported else [LedgerCell(
-        subject=f"scanner:{spec.name}", target="*", state=LedgerState.not_seen,
-        reason="; ".join(outcome.errors) or outcome.status.value)]
-    return {"raw_alerts": outcome.alerts, "ledger": cells, "covered_cwes": sorted(outcome.covered_cwes)}
+    if outcome.status == Capability.supported:
+        # 재검사는 같은 도구가 정상 실행된 기록이 있어야 도구 결과로만 실린 이슈를 해결로 친다.
+        cell = LedgerCell(subject=f"scanner:{spec.name}", target="*", state=LedgerState.checked, reason="실행함")
+    else:
+        cell = LedgerCell(subject=f"scanner:{spec.name}", target="*", state=LedgerState.not_seen,
+                          reason="; ".join(outcome.errors) or outcome.status.value)
+    return {"raw_alerts": outcome.alerts, "ledger": [cell], "covered_cwes": sorted(outcome.covered_cwes)}
 
 
 def _structure(state: ScanState) -> dict:

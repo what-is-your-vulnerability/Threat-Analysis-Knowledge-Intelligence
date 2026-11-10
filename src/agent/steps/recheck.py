@@ -66,15 +66,20 @@ def compare_runs(previous: Path, current: Path) -> list[RecheckItem]:
 
 
 def _compare_scanner_findings(before_report: dict, after_report: dict) -> list[RecheckItem]:
-    """AI 조사 없이 도구 결과로만 실린 이슈를 비교한다. 스캐너가 정상 실행되지 않았으면 해결로 치지 않는다."""
+    """AI 조사 없이 도구 결과로만 실린 이슈를 비교한다. 같은 도구가 정상 실행됐고 파일이 남아 있을 때만 해결로 친다."""
     after_ids = {f["finding_id"] for f in after_report.get("findings", [])}
-    # 스캐너가 하나도 없거나 실패했으면 해결로 치지 않는다. 언어가 안 맞아 건너뛴 도구는 상관없다.
-    scanner_ok = not any(c["subject"] == "scanner:*" or (c["subject"].startswith("scanner:") and c["state"] == "not_seen")
-                         for c in after_report.get("ledger", []))
+    ran = {c["subject"].removeprefix("scanner:") for c in after_report.get("ledger", [])
+           if c["subject"].startswith("scanner:") and c["state"] == "checked"}
+    files = set(after_report.get("files", []))
     items = []
     for finding in before_report.get("findings", []):
         if not finding.get("tool_confirmed") or finding.get("case_ids"):
             continue
-        change = "still" if finding["finding_id"] in after_ids else ("resolved" if scanner_ok else "unverifiable")
+        basis = (finding.get("evidence") or [{}])[0].get("basis") or [""]
+        tool = basis[0].partition(" ")[0]  # 근거는 "<도구> <규칙>"이다
+        if finding["finding_id"] in after_ids:
+            change = "still"
+        else:
+            change = "resolved" if tool in ran and finding.get("root_file") in files else "unverifiable"
         items.append(RecheckItem(case_id=finding["finding_id"], claim_key="scanner", change=change))
     return items
