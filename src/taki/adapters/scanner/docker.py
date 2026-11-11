@@ -76,7 +76,7 @@ def load_scanner(entry, base: Path) -> ScannerSpec:
     if isinstance(entry, str):
         path = SCANNER_DIR / f"{entry}.yml"
         if not NAME_RE.match(entry) or not path.exists():
-            raise ConfigError(f"스캐너 정의가 없음: {entry} (src/taki/rules/scanners/{entry}.yml)")
+            raise ConfigError(f"스캐너 정의가 없음: {entry} ({path})")
         try:
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except yaml.YAMLError as e:
