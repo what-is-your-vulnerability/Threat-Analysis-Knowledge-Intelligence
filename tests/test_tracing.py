@@ -7,11 +7,11 @@ from pathlib import Path
 from conftest import make_config
 from langsmith import Client
 
-from agent.config import AgentConfig
-from agent.core import orchestrator
-from agent.llm import gateway as gateway_module
-from agent.llm.gateway import LlmGateway
-from agent.schemas.models import Budget
+from taki.config import AgentConfig
+from taki.core import orchestrator
+from taki.llm import gateway as gateway_module
+from taki.llm.gateway import LlmGateway
+from taki.schemas.models import Budget
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 
@@ -36,14 +36,14 @@ def test_tracing_is_off_by_default(fake, tmp_path, monkeypatch):
 
 def test_project_setting_wraps_the_client(fake, tmp_path, monkeypatch):
     calls = _spy_wrapper(monkeypatch)
-    LlmGateway(make_config(fake, langsmith_project="secagent"), tmp_path)
+    LlmGateway(make_config(fake, langsmith_project="taki"), tmp_path)
     assert len(calls) == 1
 
 
 def test_wrapped_client_still_calls_the_model(fake, tmp_path, monkeypatch):
     monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
     fake.responses.append({"content": "ok"})
-    gw = LlmGateway(make_config(fake, langsmith_project="secagent"), tmp_path)
+    gw = LlmGateway(make_config(fake, langsmith_project="taki"), tmp_path)
     response = gw.complete("investigate", [{"role": "user", "content": "x"}], prompt_version="p_v1", budget=Budget(),
                            case_id="c1")
     assert response.content == "ok" and "langsmith_extra" not in json.dumps(fake.requests[0])
@@ -74,6 +74,6 @@ def test_scan_traces_into_the_configured_project(fake, tmp_path, monkeypatch):
     seen = _spy_context(monkeypatch)
     fake.responses.append({"match": "lens_id별로", "content": '{"claims": []}'})
     orchestrator.run_scan(FIX / "vulnerable", design=[], out=tmp_path,
-                          config=make_config(fake, langsmith_project="secagent"), slices_file=FIX / "slices.yml")
-    assert seen[0]["enabled"] is True and seen[0]["project_name"] == "secagent"
+                          config=make_config(fake, langsmith_project="taki"), slices_file=FIX / "slices.yml")
+    assert seen[0]["enabled"] is True and seen[0]["project_name"] == "taki"
     assert isinstance(seen[0]["client"], Client)  # 단계 기록을 줄이는 클라이언트로 보낸다

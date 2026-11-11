@@ -20,7 +20,7 @@ SAST 결과는 두 가지로 LLM에 간다. 범위 안 경고는 같은 파일·
 
 ```bash
 uv sync
-cp agent.example.yml agent.yml   # 모델을 정해 적는다. agent.yml은 커밋하지 않는다.
+cp taki.example.yml taki.yml       # 모델을 정해 적는다. taki.yml은 커밋하지 않는다.
 export OPENAI_API_KEY=...        # api.openai.com으로만 보낸다. 다른 주소의 키는 LLM_API_KEY로 넘긴다.
 ```
 
@@ -30,12 +30,12 @@ export OPENAI_API_KEY=...        # api.openai.com으로만 보낸다. 다른 주
 
 ```bash
 scripts/demo.sh --fake        # 모의 LLM으로 대표 데모(규칙 도출 → 승인 → 검사 → 재검사)
-scripts/demo.sh               # agent.yml의 모델로 같은 데모
+scripts/demo.sh               # taki.yml의 모델로 같은 데모
 
-uv run secagent rules derive TARGET --design 설계.md --out rules.yml
-uv run secagent rules approve rules.yml --id R1        # 또는 --all
-uv run secagent scan TARGET --design 설계.md --rules rules.yml --out runs/a
-uv run secagent recheck TARGET --previous runs/a --design 설계.md --rules rules.yml --out runs/b
+uv run taki rules derive TARGET --design 설계.md --out rules.yml
+uv run taki rules approve rules.yml --id R1        # 또는 --all
+uv run taki scan TARGET --design 설계.md --rules rules.yml --out runs/a
+uv run taki recheck TARGET --previous runs/a --design 설계.md --rules rules.yml --out runs/b
 ```
 
 종료 코드: 0 통과, 1 경고, 2 차단, 3 실행 실패. 결과는 `--out` 폴더의 `report.html`, `report.json`, `results.sarif`, `ledger.json`이다.
@@ -50,15 +50,15 @@ uv run secagent recheck TARGET --previous runs/a --design 설계.md --rules rule
 
 ```bash
 docker compose -f deploy/docker-compose.yml up -d --wait   # PostgreSQL만 127.0.0.1:55432
-uv run secagent db-upgrade
-uv run secagent api            # 127.0.0.1:8000, 인증 없음. Host가 127.0.0.1·localhost인 요청만 받고 상태 변경은 JSON 본문만 받는다
-uv run secagent worker
-uv run secagent openapi > deploy/openapi.json
+uv run taki db-upgrade
+uv run taki api            # 127.0.0.1:8000, 인증 없음. Host가 127.0.0.1·localhost인 요청만 받고 상태 변경은 JSON 본문만 받는다
+uv run taki worker
+uv run taki openapi > deploy/openapi.json
 ```
 
 ## 스캐너 등록
 
-SAST 도구는 `agent.yml`의 `scanners:`에 적는다. 이름을 적으면 `rules/scanners/<이름>.yml` 정의를 쓰고, 정의를 직접 적어도 된다.
+SAST 도구는 `taki.yml`의 `scanners:`에 적는다. 이름을 적으면 `rules/scanners/<이름>.yml` 정의를 쓰고, 정의를 직접 적어도 된다.
 도구는 Docker에서 `--network none --read-only`로 돌고, 코드는 `/src`에 읽기 전용으로 붙는다. 결과 SARIF는 `--out` 폴더의 `scanners/<이름>.sarif`에 남는다.
 
 ```yaml
@@ -87,7 +87,7 @@ AI는 탐지 범위(`steps/cases.py`의 `IN_SCOPE_CWES`) 안 CWE의 경고만 �
 
 ```bash
 docker build --platform linux/amd64 --build-arg CODEQL_SHA256=<공식 SHA-256> \
-  -t secagent-codeql:2.27.4 deploy/scanners/codeql
+  -t taki-codeql:2.27.4 deploy/scanners/codeql
 uv run pytest -m codeql      # 이미지가 있을 때만
 ```
 
@@ -102,11 +102,11 @@ uv run pytest -m codeql      # 이미지가 있을 때만
 
 ```bash
 cp .env.example .env    # OPENAI_API_KEY, LANGSMITH_API_KEY를 채우고
-                        # SECAGENT_LANGSMITH_PROJECT=taki 줄이 있으면 LangSmith로 기록을 보낸다. 끄려면 지운다
-scripts/demo.sh         # 또는 secagent scan ...
+                        # TAKI_LANGSMITH_PROJECT=taki 줄이 있으면 LangSmith로 기록을 보낸다. 끄려면 지운다
+scripts/demo.sh         # 또는 taki scan ...
 ```
 
-LangSmith는 `SECAGENT_LANGSMITH_PROJECT`(또는 `agent.yml`의 `langsmith_project`)를 적었을 때만 보낸다.
+LangSmith는 `TAKI_LANGSMITH_PROJECT`(또는 `taki.yml`의 `langsmith_project`)를 적었을 때만 보낸다.
 다른 프로젝트용으로 흔히 켜 두는 `LANGSMITH_PROJECT`·`LANGSMITH_TRACING`만으로는 보내지 않고, `scripts/demo.sh --fake`도 보내지 않는다.
 기록 단위는 검사 그래프 → 그 단계(노드) → 조사 항목 그래프 → 도구 반복 → LLM 호출(역할·프롬프트 버전·토큰)이다.
 LLM 호출에는 비밀값을 가린 뒤의 메시지와 응답이 남는다. 그래프 단계 기록은 `core/tracing.py`가 줄여 숫자·ID·질문·오류만 남기고 코드·인용·프롬프트는 개수나 타입 이름으로 바꾼다.
@@ -126,7 +126,7 @@ uv run pytest -m codeql                       # 로컬에서 빌드한 CodeQL �
 ```bash
 uv run python eval/run.py --condition C --variant DEV-D0 --repeat 3 --experiment bc
 uv run python eval/score.py bc C
-uv run python eval/derive_dev_rules.py --config agent.yml   # 조건 D·E용 규칙
+uv run python eval/derive_dev_rules.py --config taki.yml   # 조건 D·E용 규칙
 ```
 
 정답은 `eval/score.py`가 기존 채점기로만 읽는다. 칸별 결과 파일에는 정답 라벨이 들어 있어 커밋하지 않는다. 수치는 `eval/reports/README.md`에 있고 모두 잠정이다.

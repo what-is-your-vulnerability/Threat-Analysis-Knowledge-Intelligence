@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agent.adapters.scanner.docker import (
+from taki.adapters.scanner.docker import (
     ScannerSpec,
     docker_args,
     keep_snapshot_alerts,
@@ -12,11 +12,11 @@ from agent.adapters.scanner.docker import (
     plan_scanners,
     run_scanner,
 )
-from agent.adapters.scanner.sarif import ScanOutcome
-from agent.config import RULES_DIR, AgentConfig, ConfigError, load_config
-from agent.core.orchestrator import run_scan
-from agent.schemas.models import Capability, Fact, LedgerState
-from agent.steps.scope import scan_scope
+from taki.adapters.scanner.sarif import ScanOutcome
+from taki.config import RULES_DIR, AgentConfig, ConfigError, load_config
+from taki.core.orchestrator import run_scan
+from taki.schemas.models import Capability, Fact, LedgerState
+from taki.steps.scope import scan_scope
 
 FIX = Path(__file__).parent / "fixtures" / "semgrep"
 
@@ -39,7 +39,7 @@ def test_builtin_semgrep_definition_loads():
 
 
 def test_docker_args_isolate_and_expand(tmp_path):
-    args = docker_args(_semgrep(), _snapshot(), tmp_path, "secagent-semgrep-x")
+    args = docker_args(_semgrep(), _snapshot(), tmp_path, "taki-semgrep-x")
     assert args[:2] == ["docker", "run"] and "--rm" in args and "--read-only" in args
     assert args[args.index("--network") + 1] == "none" and args[args.index("--pull") + 1] == "missing"
     assert f"type=bind,src={FIX / 'app'},dst=/src,readonly" in args and "/out/semgrep.sarif" in args
@@ -81,20 +81,20 @@ def test_inline_definition_rules_are_relative_to_base(tmp_path):
 
 
 def test_config_loads_scanner_names(tmp_path):
-    (tmp_path / "agent.yml").write_text("scanners: [semgrep]\n")
-    assert [s.name for s in load_config(tmp_path / "agent.yml").scanners] == ["semgrep"]
+    (tmp_path / "taki.yml").write_text("scanners: [semgrep]\n")
+    assert [s.name for s in load_config(tmp_path / "taki.yml").scanners] == ["semgrep"]
 
 
 def test_bad_scanner_in_config_is_config_error(tmp_path):
-    (tmp_path / "agent.yml").write_text("scanners: [no-such-scanner]\n")
+    (tmp_path / "taki.yml").write_text("scanners: [no-such-scanner]\n")
     with pytest.raises(ConfigError, match="no-such-scanner"):
-        load_config(tmp_path / "agent.yml")
+        load_config(tmp_path / "taki.yml")
 
 
 def test_legacy_semgrep_key_is_rejected(tmp_path):
-    (tmp_path / "agent.yml").write_text("semgrep:\n  enabled: true\n")
+    (tmp_path / "taki.yml").write_text("semgrep:\n  enabled: true\n")
     with pytest.raises(ConfigError, match="scanners"):
-        load_config(tmp_path / "agent.yml")
+        load_config(tmp_path / "taki.yml")
 
 
 def test_language_mismatch_is_deferred_not_failed(tmp_path):
@@ -188,7 +188,7 @@ def test_scan_uses_scanner_alerts(fake, tmp_path, monkeypatch):
     from conftest import make_config
 
     alert = Fact(kind="alert", file="app.mjs", line=1, tool="semgrep", detail={"cwe": "CWE-918", "rule": "r", "message": "m"})
-    monkeypatch.setattr("agent.core.orchestrator.run_scanner",
+    monkeypatch.setattr("taki.core.orchestrator.run_scanner",
                         lambda *a, **k: ScanOutcome(status=Capability.partial, alerts=[alert], errors=["규칙 오류"]))
     fake.responses.append({"match": "lens_id별로", "content": '{"claims": [], "dispositions": []}'})
     (tmp_path / "t").mkdir()

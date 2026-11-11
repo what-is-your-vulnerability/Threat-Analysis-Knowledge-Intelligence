@@ -2,15 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from agent.adapters.repo.local import ForbiddenPathError
 from eval.run import run_condition
+from taki.adapters.repo.local import ForbiddenPathError
 
 ROOT = Path(__file__).resolve().parents[1]
-ALLOWED = {ROOT / "src/agent/adapters/repo/local.py"}
+ALLOWED = {ROOT / "src/taki/adapters/repo/local.py"}
 
 
 def test_package_never_references_ground_truth():
-    sources = [*(ROOT / "src/agent").rglob("*.py"), ROOT / "eval/run.py"]
+    sources = [*(ROOT / "src/taki").rglob("*.py"), ROOT / "eval/run.py"]
     assert [p for p in sources if "ground-truth-private" in p.read_text(encoding="utf-8") and p not in ALLOWED] == []
 
 

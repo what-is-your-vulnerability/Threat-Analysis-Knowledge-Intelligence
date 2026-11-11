@@ -3,9 +3,9 @@ import json
 import pytest
 from conftest import make_config
 
-from agent.llm.gateway import LlmGateway
-from agent.llm.roles import investigate, propose_fix, review, wrap_data
-from agent.schemas.models import (
+from taki.llm.gateway import LlmGateway
+from taki.llm.roles import investigate, propose_fix, review, wrap_data
+from taki.schemas.models import (
     Case,
     CaseSource,
     Claim,

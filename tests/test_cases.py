@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from agent.llm.roles import InvestigateResult
-from agent.schemas.models import (
+from taki.llm.roles import InvestigateResult
+from taki.schemas.models import (
     Budget,
     CaseSource,
     Disposition,
@@ -15,10 +15,10 @@ from agent.schemas.models import (
     SliceFile,
     VerdictState,
 )
-from agent.steps.cases import alerts_by_slice, build_cases, pass_through_alerts, update_ledger
-from agent.steps.lenses import load_lenses
-from agent.steps.scope import scan_scope
-from agent.steps.slices import load_slices, render_slice
+from taki.steps.cases import alerts_by_slice, build_cases, pass_through_alerts, update_ledger
+from taki.steps.lenses import load_lenses
+from taki.steps.scope import scan_scope
+from taki.steps.slices import load_slices, render_slice
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 

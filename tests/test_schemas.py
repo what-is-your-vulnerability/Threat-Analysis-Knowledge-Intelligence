@@ -1,4 +1,4 @@
-from agent.schemas.models import (
+from taki.schemas.models import (
     CaseSource,
     Claim,
     EvidencePath,

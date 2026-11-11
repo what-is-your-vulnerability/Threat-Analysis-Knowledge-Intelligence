@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from agent.adapters.lang.java_index import build_index
-from agent.schemas.models import Certainty
-from agent.steps.scope import scan_scope
+from taki.adapters.lang.java_index import build_index
+from taki.schemas.models import Certainty
+from taki.steps.scope import scan_scope
 
 FIX = Path(__file__).parent / "fixtures" / "java_calls"
 CANONICAL = Path(__file__).resolve().parents[2] / "benchmarks" / "canonical-bss" / "impl" / "java"

@@ -4,13 +4,13 @@ from pathlib import Path
 import pytest
 from conftest import make_config
 
-from agent.core.orchestrator import RunResult, run_scan
-from agent.llm.roles import InvestigateResult, _ReviewOutput
-from agent.llm.tool_loop import submit_tool
-from agent.schemas.models import Fact
-from agent.steps.cases import load_rules, pass_through_alerts
-from agent.steps.paths import finding_paths
-from agent.steps.slices import render_slice
+from taki.core.orchestrator import RunResult, run_scan
+from taki.llm.roles import InvestigateResult, _ReviewOutput
+from taki.llm.tool_loop import submit_tool
+from taki.schemas.models import Fact
+from taki.steps.cases import load_rules, pass_through_alerts
+from taki.steps.paths import finding_paths
+from taki.steps.slices import render_slice
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 CONTROLLER = "src/main/java/demo/member/MemberController.java"

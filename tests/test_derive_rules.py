@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 from conftest import make_config
 
-from agent.cli.main import main
-from agent.core.orchestrator import run_scan
-from agent.llm.gateway import LlmGateway
-from agent.llm.roles import derive_rules
-from agent.schemas.models import CaseSource, LedgerState, RuleStatus
-from agent.steps.cases import load_rules
+from taki.cli.main import main
+from taki.core.orchestrator import run_scan
+from taki.llm.gateway import LlmGateway
+from taki.llm.roles import derive_rules
+from taki.schemas.models import CaseSource, LedgerState, RuleStatus
+from taki.steps.cases import load_rules
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 DESIGN = FIX / "design.md"
@@ -35,7 +35,7 @@ def gw(fake, tmp_path):
 
 
 def test_template_ids_come_from_asvs():
-    from agent.llm.roles import load_templates
+    from taki.llm.roles import load_templates
 
     templates = load_templates()
     assert {t["category"] for t in templates} <= set(range(1, 9)) and all(t["id"] and t["description"] for t in templates)

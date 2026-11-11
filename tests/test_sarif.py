@@ -1,5 +1,5 @@
-from agent.schemas.models import Claim, EvidencePath, Hop, Role
-from agent.steps.sarif import to_sarif
+from taki.schemas.models import Claim, EvidencePath, Hop, Role
+from taki.steps.sarif import to_sarif
 
 
 def _path(*hops):

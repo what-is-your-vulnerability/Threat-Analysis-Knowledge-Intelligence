@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from agent.adapters.scanner.sarif import coverage_gaps, normalize_cwe, parse_sarif
-from agent.schemas.models import Capability, Certainty, LedgerState
+from taki.adapters.scanner.sarif import coverage_gaps, normalize_cwe, parse_sarif
+from taki.schemas.models import Capability, Certainty, LedgerState
 
 FIX = Path(__file__).parent / "fixtures"
 
