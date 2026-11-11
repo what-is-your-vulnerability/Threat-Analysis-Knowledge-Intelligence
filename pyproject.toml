@@ -1,6 +1,6 @@
 [project]
 name = "taki"
-version = "0.1.0"
+version = "0.2.0"
 description = "설계문서와 코드를 받아 보안 통제 누락을 근거와 함께 알려 주는 진단 Agent"
 requires-python = ">=3.12"
 dependencies = [
@@ -10,11 +10,6 @@ dependencies = [
   "jinja2",
   "tree-sitter",
   "tree-sitter-java",
-  "fastapi>=0.162.2",
-  "uvicorn>=0.54.0",
-  "sqlalchemy>=2.1.8",
-  "alembic>=1.20.1",
-  "psycopg[binary]>=3.3.8",
   "langsmith>=0.14.17",
   "langgraph==1.2.17",
 ]
@@ -35,13 +30,12 @@ packages = ["src/taki"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-# 컨테이너와 DB가 필요한 시험은 -m docker, -m postgres, -m codeql로 따로 돌린다.
-addopts = "-m 'not docker and not postgres and not codeql'"
+# 컨테이너가 필요한 시험은 -m docker, -m codeql로 따로 돌린다.
+addopts = "-m 'not docker and not codeql'"
 # langsmith 패키지가 자기 내부 모듈을 불러올 때 내는 경고다. 우리 코드와 무관하다.
 filterwarnings = ["ignore:langsmith.wrappers._openai_agents is deprecated:DeprecationWarning"]
 markers = [
   "docker: 실제 컨테이너가 필요한 시험",
-  "postgres: 로컬 PostgreSQL이 필요한 시험",
   "codeql: 로컬에서 빌드한 CodeQL 이미지가 필요한 시험",
 ]
 
