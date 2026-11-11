@@ -40,21 +40,15 @@ uv run taki recheck TARGET --previous runs/a --design 설계.md --rules rules.ym
 
 종료 코드: 0 통과, 1 경고, 2 차단, 3 실행 실패. 결과는 `--out` 폴더의 `report.html`, `report.json`, `results.sarif`, `ledger.json`이다.
 
-`report.json`(API `GET /api/v1/scans/{scan_id}/report`도 같다)의 `paths`는 이슈별 취약 경로다. 항목은 `finding_id`·`cwe`·`state`·`statement`·`steps`이고 코드 원문은 없다.
+`report.json`의 `paths`는 이슈별 취약 경로다. 항목은 `finding_id`·`cwe`·`state`·`statement`·`steps`이고 코드 원문은 없다.
 - 단계: `file`, `start`·`end`(줄), `symbol`(메서드 이름, MyBatis XML 문장 등 모르면 `null`), `role`, `source`.
 - `role`: `entrypoint`·`propagation`·`root_control`·`sink`·`outcome`·`expected_control`.
 - `source`: `flow` 프로그램이 따라간 호출 경로, `evidence` AI 근거, `tool` 도구가 확인한 데이터 흐름.
 - 한 이슈가 여러 API 흐름에 걸리면 첫 흐름만 쓴다(다른 API 경로를 이어 그리지 않으려고).
 
-로컬 API와 worker:
+## 서버
 
-```bash
-docker compose -f deploy/docker-compose.yml up -d --wait   # PostgreSQL만 127.0.0.1:55432
-uv run taki db-upgrade
-uv run taki api            # 127.0.0.1:8000, 인증 없음. Host가 127.0.0.1·localhost인 요청만 받고 상태 변경은 JSON 본문만 받는다
-uv run taki worker
-uv run taki openapi > deploy/openapi.json
-```
+로컬 API·worker·DB는 [`taki-server`](https://github.com/what-is-your-vulnerability/taki-server) 저장소에 있다. 서버는 이 엔진을 패키지로 설치해 `taki`와 `taki.service`만 쓴다(`tests/test_boundary.py`).
 
 ## 스캐너 등록
 
@@ -117,7 +111,6 @@ LLM 호출에는 비밀값을 가린 뒤의 메시지와 응답이 남는다. �
 ```bash
 uv run ruff check . && uv run pytest          # 모의 LLM, 컨테이너 없이
 uv run pytest -m docker                       # Semgrep 실제 컨테이너
-uv run pytest -m postgres                     # docker compose로 띄운 PostgreSQL 필요
 uv run pytest -m codeql                       # 로컬에서 빌드한 CodeQL 이미지 필요
 ```
 
