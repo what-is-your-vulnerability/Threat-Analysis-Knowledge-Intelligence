@@ -12,8 +12,7 @@ from taki.adapters.scanner.docker import ScannerSpec, load_scanner
 from taki.errors import ConfigError
 from taki.schemas.models import Budget
 
-# shortcut: 저장소에서 실행할 때의 위치, 패키지로 배포하면 규칙 파일을 wheel에 포함한다.
-RULES_DIR = Path(__file__).resolve().parents[2] / "rules"
+RULES_DIR = Path(__file__).resolve().parent / "rules"
 ROLES = ("onboard", "investigate", "review", "fix")
 ENV_FILE = Path(".env")  # 실행한 폴더의 .env. 키는 커밋하지 않는다.
 
@@ -25,7 +24,7 @@ class AgentConfig(BaseModel):
     reasoning_effort: str | None = None
     # 도구와 추론 강도를 함께 받지 않는 모델용. 정하면 탐색은 이 값으로 하고, 최종 답은 도구 없이 reasoning_effort로 받는다.
     tool_reasoning_effort: str | None = None
-    # 먼저 돌릴 SAST 도구. 이름(rules/scanners/<이름>.yml)이나 직접 쓴 정의. 비어 있으면 돌리지 않는다.
+    # 먼저 돌릴 SAST 도구. 이름(src/taki/rules/scanners/<이름>.yml)이나 직접 쓴 정의. 비어 있으면 돌리지 않는다.
     scanners: list[ScannerSpec] = Field(default_factory=list)
     # 비용 보호. 스캐너 경고로 만드는 AI 확인 항목 상한이고, 넘는 경고는 AI 확인 없이 도구 결과로만 싣는다.
     max_alert_cases: int = Field(default=50, ge=0)

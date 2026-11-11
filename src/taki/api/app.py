@@ -11,13 +11,17 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from taki.adapters.lang.java_index import build_index
-from taki.adapters.lang.spring import extract_spring
-from taki.adapters.repo.local import ForbiddenPathError, check_allowed
-from taki.config import AgentConfig, ConfigError
-from taki.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
-from taki.llm.roles import derive_rules, load_templates, renumber_after
-from taki.steps.scope import scan_scope
+from taki import (
+    AgentConfig,
+    BudgetExceeded,
+    ConfigError,
+    ForbiddenPathError,
+    LlmCallError,
+    LlmFormatError,
+    SecretLeft,
+    check_allowed,
+)
+from taki.service import derive_project_rules
 from taki.store.models import Document, FindingRow, LedgerCellRow, Project, ScanRun, SecurityRuleRow
 
 API_HOST = "127.0.0.1"
@@ -112,24 +116,20 @@ def create_app(session_factory, config: AgentConfig, *, runs_dir: Path = Path("r
             paths = list(session.scalars(select(Document.path).where(Document.project_id == project_id)))
             if not paths:
                 raise HTTPException(status_code=400, detail="설계문서가 없습니다.")
-            snapshot = scan_scope(Path(project.target_path))
-            spring = extract_spring(snapshot, build_index(snapshot))
-            entrypoints = [f"{e.method} {e.path_template}" for e in spring.entrypoints]
+            existing = list(session.scalars(select(SecurityRuleRow).where(SecurityRuleRow.project_id == project_id)))
             try:
-                derived = derive_rules(paths, entrypoints, load_templates(),
-                                       gateway=LlmGateway(config, Path(runs_dir) / f"derive-{project_id}"))
+                derived = derive_project_rules(paths, Path(project.target_path), [r.rule_id for r in existing], config,
+                                               Path(runs_dir) / f"derive-{project_id}")
             except ConfigError as e:
                 raise HTTPException(status_code=409, detail=str(e)) from e
             except (LlmCallError, LlmFormatError, BudgetExceeded, SecretLeft) as e:
                 raise HTTPException(status_code=502, detail=str(e)) from e
-            existing = list(session.scalars(select(SecurityRuleRow).where(SecurityRuleRow.project_id == project_id)))
             # 승인 전 후보만 새 후보로 바꾸고, ID는 이 프로젝트에서 쓴 적 없는 번호로 매긴다.
             for row in existing:
                 if row.status != "approved":
                     session.delete(row)
-            fresh = renumber_after([r.rule_id for r in existing], list(derived))
             rows = [SecurityRuleRow(project_id=project_id, rule_id=r.rule_id, status=r.status.value, version=r.version,
-                                    data=r.model_dump(mode="json")) for r in fresh]
+                                    data=r.model_dump(mode="json")) for r in derived]
             session.add_all(rows)
             session.commit()
             return {"rules": [_rule_out(r) for r in rows], "warnings": derived.warnings}

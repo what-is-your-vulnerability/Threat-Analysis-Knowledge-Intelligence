@@ -10,16 +10,13 @@ from pathlib import Path
 
 import yaml
 
-from taki.adapters.lang.java_index import build_index
-from taki.adapters.lang.spring import extract_spring
 from taki.adapters.repo.local import ForbiddenPathError, check_allowed, open_target
 from taki.config import AgentConfig, ConfigError, load_config
 from taki.core.orchestrator import RunResult, run_scan
-from taki.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
-from taki.llm.roles import derive_rules, load_templates, renumber_after
+from taki.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, SecretLeft
 from taki.schemas.models import RuleStatus, RunMode, SecurityRule
+from taki.service import derive_project_rules
 from taki.steps.cases import load_rules
-from taki.steps.scope import scan_scope
 
 POLL_SECONDS = 2
 
@@ -70,15 +67,13 @@ def _derive(args) -> int:
     for path in args.design:
         check_allowed(path.resolve())
     workdir = args.out.parent
-    snapshot = scan_scope(open_target(args.target, workdir / "_target"))
-    spring = extract_spring(snapshot, build_index(snapshot))
-    entrypoints = [f"{e.method} {e.path_template}" for e in spring.entrypoints]
+    target = open_target(args.target, workdir / "_target")
     config = load_config(args.config)
-    derived = derive_rules(args.design, entrypoints, load_templates(), gateway=LlmGateway(config, workdir))
     # 이미 승인한 규칙은 남기고, 승인 전 후보만 새 후보로 바꾼다.
     existing = load_rules(args.out) if args.out.exists() else []
+    derived = derive_project_rules(args.design, target, [r.rule_id for r in existing], config, workdir)
     approved = [r for r in existing if r.status == RuleStatus.approved]
-    _write_rules(args.out, [*approved, *renumber_after([r.rule_id for r in existing], list(derived))])
+    _write_rules(args.out, [*approved, *derived])
     args.out.with_suffix(".threats.yml").write_text(
         yaml.safe_dump(derived.threats, allow_unicode=True, sort_keys=False), encoding="utf-8")
     for warning in derived.warnings:
