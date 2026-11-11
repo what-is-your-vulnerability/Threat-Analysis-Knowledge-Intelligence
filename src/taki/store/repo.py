@@ -12,9 +12,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from taki.config import AgentConfig
-from taki.core.orchestrator import RunResult, run_scan
-from taki.schemas.models import RunMode, SecurityRule
+from taki import AgentConfig, RunMode, RunResult, SecurityRule, run_scan
 from taki.store.models import (
     Document,
     FindingRow,
