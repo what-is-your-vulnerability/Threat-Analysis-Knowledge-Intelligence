@@ -1,8 +1,8 @@
 import pytest
 
-from agent.schemas.models import CheckFailure, Claim, EvidencePath, Flow, Hop, Role
-from agent.steps.evidence import check_evidence
-from agent.steps.scope import scan_scope
+from taki.schemas.models import CheckFailure, Claim, EvidencePath, Flow, Hop, Role
+from taki.steps.evidence import check_evidence
+from taki.steps.scope import scan_scope
 
 JAVA = """package x;
 public class MemberController {

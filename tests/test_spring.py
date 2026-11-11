@@ -3,10 +3,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from agent.adapters.lang.java_index import build_index
-from agent.adapters.lang.spring import extract_spring
-from agent.schemas.models import Capability, Certainty
-from agent.steps.scope import scan_scope
+from taki.adapters.lang.java_index import build_index
+from taki.adapters.lang.spring import extract_spring
+from taki.schemas.models import Capability, Certainty
+from taki.steps.scope import scan_scope
 
 ROOT = Path(__file__).resolve().parents[2]
 CANONICAL = ROOT / "benchmarks" / "canonical-bss"

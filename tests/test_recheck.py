@@ -1,6 +1,6 @@
 import json
 
-from agent.steps.recheck import compare_runs
+from taki.steps.recheck import compare_runs
 
 
 def _verdict(case_id, state, key="k1", code_hash="h", file="A.java"):

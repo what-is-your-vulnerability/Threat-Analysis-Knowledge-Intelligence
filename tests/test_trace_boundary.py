@@ -7,16 +7,16 @@ import pytest
 from conftest import make_config
 from langsmith import Client, tracing_context
 
-from agent.adapters.lang.java_index import build_index
-from agent.adapters.lang.mybatis import parse_mappers
-from agent.core import tracing
-from agent.core.orchestrator import run_scan
-from agent.llm.gateway import LlmGateway
-from agent.llm.roles import investigate
-from agent.schemas.models import Budget, Case, CaseSource
-from agent.steps.cases import load_rules
-from agent.steps.scope import scan_scope
-from agent.tools.readonly import ReadOnlyTools
+from taki.adapters.lang.java_index import build_index
+from taki.adapters.lang.mybatis import parse_mappers
+from taki.core import tracing
+from taki.core.orchestrator import run_scan
+from taki.llm.gateway import LlmGateway
+from taki.llm.roles import investigate
+from taki.schemas.models import Budget, Case, CaseSource
+from taki.steps.cases import load_rules
+from taki.steps.scope import scan_scope
+from taki.tools.readonly import ReadOnlyTools
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 MARK = "MARKER_ZQX_CODE"

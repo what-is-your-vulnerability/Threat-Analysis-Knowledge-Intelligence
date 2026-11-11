@@ -1,6 +1,6 @@
 .venv/
 .env
-agent.yml
+taki.yml
 eval/runs/
 runs/
 __pycache__/

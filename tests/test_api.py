@@ -9,9 +9,9 @@ from conftest import make_config
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from agent.api.app import API_HOST, create_app
-from agent.store.models import Base, ScanRun
-from agent.store.repo import DEFAULT_DB_URL, claim_next, make_session_factory, run_next, upgrade_database
+from taki.api.app import API_HOST, create_app
+from taki.store.models import Base, ScanRun
+from taki.store.repo import DEFAULT_DB_URL, claim_next, make_session_factory, run_next, upgrade_database
 
 pytestmark = pytest.mark.postgres
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
@@ -147,7 +147,7 @@ def test_worker_records_unexpected_error(client, sessions, fake, tmp_path, monke
     def broken(*args, **kwargs):
         raise RuntimeError("예상 못 한 오류")
 
-    monkeypatch.setattr("agent.store.repo.run_scan", broken)
+    monkeypatch.setattr("taki.store.repo.run_scan", broken)
     scan = _scan(client, _project(client))
     run_next(sessions, make_config(fake), tmp_path)
     done = client.get(f"/api/v1/scans/{scan['id']}").json()

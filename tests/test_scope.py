@@ -2,9 +2,9 @@ import zipfile
 
 import pytest
 
-from agent.adapters.repo.local import ForbiddenPathError, open_target
-from agent.schemas.models import Capability
-from agent.steps.scope import scan_scope
+from taki.adapters.repo.local import ForbiddenPathError, open_target
+from taki.schemas.models import Capability
+from taki.steps.scope import scan_scope
 
 
 def _paths(entries):

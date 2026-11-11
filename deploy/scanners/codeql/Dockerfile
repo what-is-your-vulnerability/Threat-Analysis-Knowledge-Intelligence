@@ -1,5 +1,5 @@
 # CodeQL 번들 이미지. 빌드할 때만 번들을 받고, 검사는 --network none으로 돈다.
-# 빌드: docker build --platform linux/amd64 --build-arg CODEQL_SHA256=<공식 SHA-256> -t secagent-codeql:2.27.4 deploy/scanners/codeql
+# 빌드: docker build --platform linux/amd64 --build-arg CODEQL_SHA256=<공식 SHA-256> -t taki-codeql:2.27.4 deploy/scanners/codeql
 FROM --platform=linux/amd64 debian:bookworm-slim
 
 ARG CODEQL_VERSION=2.27.4

@@ -4,16 +4,16 @@ from pathlib import Path
 import pytest
 from conftest import make_config
 
-from agent.adapters.lang.java_index import build_index
-from agent.adapters.lang.mybatis import parse_mappers
-from agent.adapters.lang.spring import extract_spring
-from agent.core.orchestrator import run_scan
-from agent.llm.gateway import LlmGateway
-from agent.llm.roles import investigate, review
-from agent.schemas.models import Budget, Case, CaseSource, Claim, EvidencePath, ReviewResult
-from agent.steps.cases import load_rules
-from agent.steps.scope import scan_scope
-from agent.tools.readonly import ReadOnlyTools
+from taki.adapters.lang.java_index import build_index
+from taki.adapters.lang.mybatis import parse_mappers
+from taki.adapters.lang.spring import extract_spring
+from taki.core.orchestrator import run_scan
+from taki.llm.gateway import LlmGateway
+from taki.llm.roles import investigate, review
+from taki.schemas.models import Budget, Case, CaseSource, Claim, EvidencePath, ReviewResult
+from taki.steps.cases import load_rules
+from taki.steps.scope import scan_scope
+from taki.tools.readonly import ReadOnlyTools
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 VULN = FIX / "vulnerable"
@@ -190,8 +190,8 @@ def test_without_split_first_submit_is_final(fake, gw, tools):
 
 
 def test_config_secret_is_masked_in_tools_and_slices(tmp_path):
-    from agent.schemas.models import Slice, SliceFile
-    from agent.steps.slices import render_slice
+    from taki.schemas.models import Slice, SliceFile
+    from taki.steps.slices import render_slice
 
     (tmp_path / "application.properties").write_text("spring.datasource.password=tiger123\n")
     snapshot = scan_scope(tmp_path)

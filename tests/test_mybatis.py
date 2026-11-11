@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from agent.adapters.lang.mybatis import parse_mappers
-from agent.steps.scope import scan_scope
+from taki.adapters.lang.mybatis import parse_mappers
+from taki.steps.scope import scan_scope
 
 CANONICAL = Path(__file__).resolve().parents[2] / "benchmarks" / "canonical-bss" / "impl" / "java"
 needs_canonical = pytest.mark.skipif(not CANONICAL.exists(), reason="정본 없음")

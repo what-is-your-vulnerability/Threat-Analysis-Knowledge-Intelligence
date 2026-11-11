@@ -13,12 +13,12 @@ from pathlib import Path
 
 import yaml
 
-from agent.adapters.repo.local import open_target
-from agent.config import load_config
-from agent.core.orchestrator import run_scan
-from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
-from agent.llm.roles import investigate
-from agent.schemas.models import (
+from taki.adapters.repo.local import open_target
+from taki.config import load_config
+from taki.core.orchestrator import run_scan
+from taki.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
+from taki.llm.roles import investigate
+from taki.schemas.models import (
     Budget,
     Case,
     CaseSource,
@@ -28,11 +28,11 @@ from agent.schemas.models import (
     VerdictState,
     make_case_id,
 )
-from agent.steps.cases import QUESTION_SUBJECT, build_cases, load_rules
-from agent.steps.lenses import load_lenses, render_questions
-from agent.steps.sarif import to_sarif
-from agent.steps.scope import scan_scope
-from agent.steps.slices import load_slices, render_slice
+from taki.steps.cases import QUESTION_SUBJECT, build_cases, load_rules
+from taki.steps.lenses import load_lenses, render_questions
+from taki.steps.sarif import to_sarif
+from taki.steps.scope import scan_scope
+from taki.steps.slices import load_slices, render_slice
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT.parent / "benchmarks" / "control-bench"

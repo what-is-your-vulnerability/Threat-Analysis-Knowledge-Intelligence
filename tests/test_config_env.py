@@ -4,13 +4,13 @@ import os
 
 import pytest
 
-from agent import config as config_module
-from agent.config import load_config
+from taki import config as config_module
+from taki.config import load_config
 
 ENV_TEXT = """# 주석
 export OPENAI_API_KEY="sk-from-file"
 LANGSMITH_API_KEY='ls-from-file'
-SECAGENT_LANGSMITH_PROJECT = secagent
+TAKI_LANGSMITH_PROJECT = taki
 
 NOT_A_PAIR
 LLM_API_KEY=
@@ -30,7 +30,7 @@ def env_file(tmp_path, monkeypatch):
 def test_env_file_is_loaded(env_file):
     config = load_config(None)
     assert os.environ["OPENAI_API_KEY"] == "sk-from-file" and os.environ["LANGSMITH_API_KEY"] == "ls-from-file"
-    assert config.langsmith_project == "secagent"
+    assert config.langsmith_project == "taki"
     assert "LLM_API_KEY" not in os.environ  # 빈 값은 설정하지 않은 것으로 본다
 
 

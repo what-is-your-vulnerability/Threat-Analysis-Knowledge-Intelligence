@@ -1,20 +1,21 @@
 # 로컬 개발용 PostgreSQL. 개발 PC에서만 접근하고, API와 worker는 PC의 프로세스로 돈다.
+name: taki
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: secagent
-      POSTGRES_PASSWORD: secagent-local-dev
-      POSTGRES_DB: secagent
+      POSTGRES_USER: taki
+      POSTGRES_PASSWORD: taki-local-dev
+      POSTGRES_DB: taki
     ports:
       - "127.0.0.1:55432:5432"
     volumes:
-      - secagent-pg:/var/lib/postgresql/data
+      - taki-pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U secagent -d secagent"]
+      test: ["CMD-SHELL", "pg_isready -U taki -d taki"]
       interval: 2s
       timeout: 3s
       retries: 30
 
 volumes:
-  secagent-pg:
+  taki-pg:

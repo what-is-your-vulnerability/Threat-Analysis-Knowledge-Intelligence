@@ -4,11 +4,11 @@ import pytest
 from conftest import make_config
 from pydantic import BaseModel
 
-from agent.config import ConfigError, load_config
-from agent.llm import masking
-from agent.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
-from agent.llm.masking import mask_text
-from agent.schemas.models import Budget
+from taki.config import ConfigError, load_config
+from taki.llm import masking
+from taki.llm.gateway import BudgetExceeded, LlmCallError, LlmFormatError, LlmGateway, SecretLeft
+from taki.llm.masking import mask_text
+from taki.schemas.models import Budget
 
 
 class Answer(BaseModel):

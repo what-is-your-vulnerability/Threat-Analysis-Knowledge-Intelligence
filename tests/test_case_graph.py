@@ -3,17 +3,17 @@ from pathlib import Path
 
 from conftest import make_config
 
-from agent.adapters.lang.java_index import build_index
-from agent.adapters.lang.mybatis import parse_mappers
-from agent.adapters.lang.spring import extract_spring
-from agent.core.case_graph import ScanRuntime, run_case
-from agent.llm.gateway import LlmGateway
-from agent.schemas.models import Budget, CaseSource, LedgerState, VerdictState
-from agent.steps.cases import build_cases, load_rules
-from agent.steps.lenses import load_lenses
-from agent.steps.scope import scan_scope
-from agent.steps.slices import load_slices, locate_handlers
-from agent.tools.readonly import ReadOnlyTools
+from taki.adapters.lang.java_index import build_index
+from taki.adapters.lang.mybatis import parse_mappers
+from taki.adapters.lang.spring import extract_spring
+from taki.core.case_graph import ScanRuntime, run_case
+from taki.llm.gateway import LlmGateway
+from taki.schemas.models import Budget, CaseSource, LedgerState, VerdictState
+from taki.steps.cases import build_cases, load_rules
+from taki.steps.lenses import load_lenses
+from taki.steps.scope import scan_scope
+from taki.steps.slices import load_slices, locate_handlers
+from taki.tools.readonly import ReadOnlyTools
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 BAD_QUOTE = {"claims": [{"claim": "absent", "statement": "s", "root_symbol": "MemberController.delete", "basis": ["x"],
@@ -69,7 +69,7 @@ def test_question_case_without_claims_makes_no_verdict(fake, tmp_path):
 
 
 def test_alerts_reach_investigation_text(fake, tmp_path):
-    from agent.schemas.models import Fact
+    from taki.schemas.models import Fact
 
     snapshot, runtime, slices, cases = _setup(fake, tmp_path)
     case = _case(cases, CaseSource.rule)

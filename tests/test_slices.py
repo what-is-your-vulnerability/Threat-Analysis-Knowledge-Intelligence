@@ -4,14 +4,14 @@ from pathlib import Path
 import pytest
 from conftest import make_config
 
-from agent.adapters.lang.java_index import build_index
-from agent.adapters.lang.mybatis import parse_mappers
-from agent.adapters.lang.spring import extract_spring
-from agent.core.orchestrator import run_scan
-from agent.schemas.models import Capability, Role, VerdictState
-from agent.steps.cases import load_rules
-from agent.steps.scope import scan_scope
-from agent.steps.slices import build_slices, fallback_slices, render_slice
+from taki.adapters.lang.java_index import build_index
+from taki.adapters.lang.mybatis import parse_mappers
+from taki.adapters.lang.spring import extract_spring
+from taki.core.orchestrator import run_scan
+from taki.schemas.models import Capability, Role, VerdictState
+from taki.steps.cases import load_rules
+from taki.steps.scope import scan_scope
+from taki.steps.slices import build_slices, fallback_slices, render_slice
 
 ROOT = Path(__file__).resolve().parents[2]
 CANONICAL = ROOT / "benchmarks" / "canonical-bss"

@@ -1,6 +1,6 @@
 import pytest
 
-from agent.schemas.models import (
+from taki.schemas.models import (
     Case,
     CaseSource,
     CheckFailure,
@@ -14,7 +14,7 @@ from agent.schemas.models import (
     Role,
     VerdictState,
 )
-from agent.steps.verdict import decide, group_findings, policy_outcome
+from taki.steps.verdict import decide, group_findings, policy_outcome
 
 PASS = EvidenceCheck(passed=True)
 FAIL = EvidenceCheck(passed=False, failures=[CheckFailure.quote_not_found])

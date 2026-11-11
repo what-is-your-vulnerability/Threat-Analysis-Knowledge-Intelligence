@@ -1,5 +1,5 @@
 [project]
-name = "security-diagnosis-agent"
+name = "taki"
 version = "0.1.0"
 description = "설계문서와 코드를 받아 보안 통제 누락을 근거와 함께 알려 주는 진단 Agent"
 requires-python = ">=3.12"
@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-secagent = "agent.cli.main:main"
+taki = "taki.cli.main:main"
 
 [dependency-groups]
 dev = ["pytest", "ruff"]
@@ -30,7 +30,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agent"]
+packages = ["src/taki"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -3,11 +3,11 @@ import threading
 
 from conftest import make_config
 
-from agent.adapters.scanner.docker import ScannerSpec
-from agent.adapters.scanner.sarif import ScanOutcome
-from agent.core import orchestrator
-from agent.core.orchestrator import run_scan
-from agent.schemas.models import Capability, CaseSource, Fact, LedgerState
+from taki.adapters.scanner.docker import ScannerSpec
+from taki.adapters.scanner.sarif import ScanOutcome
+from taki.core import orchestrator
+from taki.core.orchestrator import run_scan
+from taki.schemas.models import Capability, CaseSource, Fact, LedgerState
 
 NO_ISSUE = {"match": "lens_id별로", "content": '{"claims": [], "dispositions": []}'}
 

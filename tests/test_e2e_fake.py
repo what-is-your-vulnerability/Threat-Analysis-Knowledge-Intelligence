@@ -4,11 +4,11 @@ from pathlib import Path
 import pytest
 from conftest import make_config
 
-from agent.cli.main import main
-from agent.config import ConfigError
-from agent.core.orchestrator import run_scan
-from agent.schemas.models import CaseSource, Fact, LedgerState, RunMode, VerdictState
-from agent.steps.cases import load_rules
+from taki.cli.main import main
+from taki.config import ConfigError
+from taki.core.orchestrator import run_scan
+from taki.schemas.models import CaseSource, Fact, LedgerState, RunMode, VerdictState
+from taki.steps.cases import load_rules
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 VULN, FIXED, DESIGN, SLICES, RULES_FILE = (
@@ -93,7 +93,7 @@ def test_failed_scope_exit_3(tmp_path):
 
 
 def make_config_unused():
-    from agent.config import AgentConfig
+    from taki.config import AgentConfig
 
     return AgentConfig()
 
@@ -106,7 +106,7 @@ def test_missing_model_is_not_turned_into_a_finding(fake, tmp_path):
 
 
 def test_forbidden_design_path_rejected(fake, tmp_path):
-    from agent.adapters.repo.local import ForbiddenPathError
+    from taki.adapters.repo.local import ForbiddenPathError
 
     with pytest.raises(ForbiddenPathError):
         run_scan(VULN, design=[tmp_path / "ground-truth-private" / "x.md"], out=tmp_path / "o",
@@ -147,7 +147,7 @@ def test_cli_scan_and_recheck(scripted, tmp_path, capsys, monkeypatch):
 
 
 def test_cli_reports_missing_model_without_traceback(tmp_path, capsys, monkeypatch):
-    monkeypatch.chdir(tmp_path)  # 작업 폴더의 agent.yml을 읽지 않게 한다.
+    monkeypatch.chdir(tmp_path)  # 작업 폴더의 taki.yml을 읽지 않게 한다.
     code = main(["scan", str(VULN), "--out", str(tmp_path / "a"), "--slices", str(SLICES), "--rules", str(RULES_FILE)])
     assert code == 3 and "모델" in capsys.readouterr().err
 
@@ -207,7 +207,7 @@ def test_unexpected_error_exits_3(tmp_path, capsys, monkeypatch):
     def broken(*args, **kwargs):
         raise RuntimeError("예상 못 한 오류")
 
-    monkeypatch.setattr("agent.cli.main.run_scan", broken)
+    monkeypatch.setattr("taki.cli.main.run_scan", broken)
     code = main(["scan", str(VULN), "--out", str(tmp_path / "a"), "--slices", str(SLICES)])
     assert code == 3 and "예상 못 한 오류" in capsys.readouterr().err
 

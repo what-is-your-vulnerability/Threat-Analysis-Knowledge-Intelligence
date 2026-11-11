@@ -5,13 +5,13 @@ from pathlib import Path
 import pytest
 from conftest import make_config
 
-from agent.schemas.models import Budget, Slice
-from agent.steps.cases import build_cases
-from agent.steps.lenses import load_lenses
-from agent.steps.scope import scan_scope
-from agent.steps.slices import load_slices
 from eval.run import run_condition
 from eval.score import BENCH, score
+from taki.schemas.models import Budget, Slice
+from taki.steps.cases import build_cases
+from taki.steps.lenses import load_lenses
+from taki.steps.scope import scan_scope
+from taki.steps.slices import load_slices
 
 CONDITIONS = {"B": {"extensions": [".java", ".html"], "server_exclude": ["frontend/"], "max_input_tokens": 100000}}
 CLAIM = {"claim": "absent", "statement": "s", "cwe": "CWE-862", "category": 2, "root_symbol": "A.b",
@@ -89,7 +89,7 @@ def test_b_too_large_is_recorded(fake, target, tmp_path):
 def test_b_falls_back_to_server_code_and_says_so(fake, target, tmp_path, monkeypatch):
     fake.responses.append({"content": '{"claims": []}'})
     # 프롬프트 길이에 맞춰 전체는 넘고 서버 코드만은 들어가는 한도를 찾는다.
-    from agent.llm.roles import PROMPT_DIR
+    from taki.llm.roles import PROMPT_DIR
 
     prompt = (PROMPT_DIR / "investigate_v1.md").read_text(encoding="utf-8")
     questions = sum(len(x.question) + 20 for x in load_lenses())
@@ -193,7 +193,7 @@ def test_condition_e_failure_is_not_zero_findings(fake, target, tmp_path):
 
 @needs_bench
 def test_dev_rules_match_dev_flows():
-    from agent.steps.cases import load_rules
+    from taki.steps.cases import load_rules
 
     rules_file = Path(__file__).resolve().parents[1] / "eval" / "rules" / "dev.yml"
     if not rules_file.exists():
