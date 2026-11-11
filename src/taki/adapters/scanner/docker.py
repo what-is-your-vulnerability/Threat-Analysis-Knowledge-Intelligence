@@ -17,7 +17,7 @@ from taki.adapters.scanner.sarif import ScanOutcome, parse_sarif
 from taki.errors import ConfigError
 from taki.schemas.models import Capability, Fact, LedgerCell, LedgerState, Snapshot
 
-SCANNER_DIR = Path(__file__).resolve().parents[4] / "rules" / "scanners"
+SCANNER_DIR = Path(__file__).resolve().parents[2] / "rules" / "scanners"
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}")
 PLACEHOLDERS = {"sarif", "rules", "src", "work"}
@@ -70,13 +70,13 @@ def _expand(patterns, base: Path) -> list[Path]:
 
 
 def load_scanner(entry, base: Path) -> ScannerSpec:
-    """이름(rules/scanners/<이름>.yml)이나 직접 쓴 정의를 읽는다. 규칙 경로는 정의가 적힌 곳 기준이다."""
+    """이름(src/taki/rules/scanners/<이름>.yml)이나 직접 쓴 정의를 읽는다. 규칙 경로는 정의가 적힌 곳 기준이다."""
     if isinstance(entry, ScannerSpec):
         return entry
     if isinstance(entry, str):
         path = SCANNER_DIR / f"{entry}.yml"
         if not NAME_RE.match(entry) or not path.exists():
-            raise ConfigError(f"스캐너 정의가 없음: {entry} (rules/scanners/{entry}.yml)")
+            raise ConfigError(f"스캐너 정의가 없음: {entry} (src/taki/rules/scanners/{entry}.yml)")
         try:
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except yaml.YAMLError as e:

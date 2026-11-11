@@ -58,12 +58,12 @@ uv run taki openapi > deploy/openapi.json
 
 ## 스캐너 등록
 
-SAST 도구는 `taki.yml`의 `scanners:`에 적는다. 이름을 적으면 `rules/scanners/<이름>.yml` 정의를 쓰고, 정의를 직접 적어도 된다.
+SAST 도구는 `taki.yml`의 `scanners:`에 적는다. 이름을 적으면 `src/taki/rules/scanners/<이름>.yml` 정의를 쓰고, 정의를 직접 적어도 된다.
 도구는 Docker에서 `--network none --read-only`로 돌고, 코드는 `/src`에 읽기 전용으로 붙는다. 결과 SARIF는 `--out` 폴더의 `scanners/<이름>.sarif`에 남는다.
 
 ```yaml
 scanners:
-  - semgrep            # rules/scanners/semgrep.yml
+  - semgrep            # src/taki/rules/scanners/semgrep.yml
 ```
 
 | 필드 | 뜻 |
@@ -83,7 +83,7 @@ AI는 탐지 범위(`steps/cases.py`의 `IN_SCOPE_CWES`) 안 CWE의 경고만 �
 
 ### CodeQL
 
-`rules/scanners/codeql.yml`은 Java를 빌드 없이(`--build-mode=none`) `java-security-extended`로 검사한다. 이미지는 로컬에서 빌드하고 레지스트리에서 받지 않는다(`pull: never`).
+`src/taki/rules/scanners/codeql.yml`은 Java를 빌드 없이(`--build-mode=none`) `java-security-extended`로 검사한다. 이미지는 로컬에서 빌드하고 레지스트리에서 받지 않는다(`pull: never`).
 
 ```bash
 docker build --platform linux/amd64 --build-arg CODEQL_SHA256=<공식 SHA-256> \
@@ -137,5 +137,5 @@ uv run python eval/derive_dev_rules.py --config taki.yml   # 조건 D·E용 규�
 - 재검토는 1번이라 차단은 나오지 않는다(차단은 도구 확인 + 재검토 3번 유지일 때만).
 - 위험도 점수, 배포 확률, 기준 문서 RAG, PR 연동, 의존성 점검(OSV), 탐지 규칙 생성은 아직 없다.
 - 범위 밖 유형(SSRF 등)은 스캐너 규칙이 있을 때만 결과가 나오고, 없으면 리포트의 못 본 범위에 나온다.
-- `rules/templates.yml`의 ASVS 항목은 도구 저장소의 JSON에서 옮겼고 ASVS 원문과 대조하지 않았다.
+- `src/taki/rules/templates.yml`의 ASVS 항목은 도구 저장소의 JSON에서 옮겼고 ASVS 원문과 대조하지 않았다.
 - DEV 수치는 공개 codefix 기반 데이터라 성능 주장에 쓰지 않는다.
