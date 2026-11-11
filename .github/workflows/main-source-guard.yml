@@ -1,0 +1,31 @@
+# main 브랜치로 들어오는 PR은 이 저장소의 dev 브랜치에서만 받는다.
+# protect-main 룰셋의 필수 상태 체크로 "main-source-guard"를 등록해야 실제로 병합이 막힌다.
+name: main-source-guard
+
+on:
+  pull_request:
+    branches: [main]
+    # edited: PR의 base를 다른 브랜치에서 main으로 바꾼 경우도 다시 검사한다.
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+
+permissions: {}
+
+jobs:
+  main-source-guard:
+    name: main-source-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: PR 출처가 같은 저장소의 dev인지 확인
+        env:
+          # 브랜치 이름은 PR 작성자가 정하는 값이라 run 스크립트에 직접 넣지 않고 env로만 전달한다.
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REPO" = "$THIS_REPO" ] && [ "$HEAD_REF" = "dev" ]; then
+            echo "OK: $HEAD_REPO:dev -> main"
+            exit 0
+          fi
+          echo "::error title=main PR 출처 오류::main으로의 PR은 이 저장소의 dev 브랜치에서만 받습니다. (현재 출처: ${HEAD_REPO}:${HEAD_REF}) 작업 브랜치는 dev로 PR을 보내 주세요."
+          exit 1
