@@ -1,0 +1,6 @@
+# 인프라·CI·배포 파일은 인프라 담당이 리뷰한다.
+# 리뷰를 필수로 할지는 브랜치 룰셋의 "Require review from Code Owners"로 정한다.
+/.github/   @dlkara
+/deploy/    @dlkara
+/Dockerfile @dlkara
+/Jenkinsfile @dlkara
