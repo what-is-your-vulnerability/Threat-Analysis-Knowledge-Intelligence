@@ -7,7 +7,6 @@ from taki.schemas.models import Certainty
 from taki.steps.scope import scan_scope
 
 FIX = Path(__file__).parent / "fixtures" / "java_calls"
-CANONICAL = Path(__file__).resolve().parents[2] / "benchmarks" / "canonical-bss" / "impl" / "java"
 
 
 @pytest.fixture(scope="module")
@@ -113,10 +112,9 @@ def test_shared_state_finds_static_cache(index):
     assert not any(symbol in ("Cache.LIMIT", "Cache.accountMapper") for _, symbol in found)
 
 
-@pytest.mark.skipif(not CANONICAL.exists(), reason="정본 없음")
-def test_canonical_has_no_unresolved_in_member_delete():
-    index = build_index(scan_scope(CANONICAL))
-    assert index.method("MemberAdminService.delete") is not None
-    assert index.unresolved_calls("MemberAdminService.delete") == []
+def test_app_has_no_unresolved_calls(extended_app):
+    index = build_index(scan_scope(extended_app))
+    assert index.method("MemberService.delete") is not None
+    assert index.unresolved_calls("MemberService.delete") == []
     everywhere = {s: u for s in index.symbols() if (u := index.unresolved_calls(s))}
     assert everywhere == {}

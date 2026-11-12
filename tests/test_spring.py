@@ -1,17 +1,13 @@
 from pathlib import Path
 
 import pytest
-import yaml
 
 from taki.adapters.lang.java_index import build_index
 from taki.adapters.lang.spring import extract_spring
 from taki.schemas.models import Capability, Certainty
 from taki.steps.scope import scan_scope
 
-ROOT = Path(__file__).resolve().parents[2]
-CANONICAL = ROOT / "benchmarks" / "canonical-bss"
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
-needs_canonical = pytest.mark.skipif(not CANONICAL.exists(), reason="정본 없음")
 POM = (
     "<project><dependencies><dependency><artifactId>spring-boot-starter-web</artifactId>"
     "</dependency></dependencies></project>\n"
@@ -45,17 +41,21 @@ def app(tmp_path, annotation='@GetMapping("/a")', prefix='"/p"', extra=""):
 
 
 @pytest.fixture(scope="module")
-def canonical():
-    return by_route(extract(CANONICAL / "impl" / "java"))
+def extended(extended_app):
+    return by_route(extract(extended_app))
 
 
-@needs_canonical
-def test_canonical_matches_openapi_20_operations(canonical):
-    spec = yaml.safe_load((CANONICAL / "api" / "dev.openapi.yaml").read_text(encoding="utf-8"))
-    base = spec["servers"][0]["url"]
-    verbs = {"get", "post", "put", "patch", "delete"}
-    expected = {(v.upper(), base + p) for p, item in spec["paths"].items() for v in item if v in verbs}
-    assert len(expected) == 20 and set(canonical) == expected
+def test_extended_routes_match_contract(extended):
+    assert set(extended) == {
+        ("GET", "/api/v1/admin/members"),
+        ("POST", "/api/v1/admin/members/{id}/suspend"),
+        ("DELETE", "/api/v1/admin/members/{id}"),
+        ("GET", "/admin/members/{id}"),
+        ("POST", "/api/v1/auth/login"),
+        ("GET", "/api/v1/me/profile"),
+        ("POST", "/api/v1/signup"),
+        ("POST", "/api/v1/signup/verifications/{verificationId}/complete"),
+    }
 
 
 def test_class_and_method_mapping_joined(tmp_path):
@@ -82,28 +82,24 @@ def test_context_path_and_placeholder_from_config(tmp_path):
     assert list(by_route(extract(tmp_path))) == [("GET", "/ctx/p/v2/x")]
 
 
-@needs_canonical
-def test_member_delete_guards(canonical):
-    guards = canonical[("DELETE", "/api/v1/admin/members/{account_id}")].effective_guards
+def test_url_and_method_guards_are_combined(extended):
+    guards = extended[("POST", "/api/v1/admin/members/{id}/suspend")].effective_guards
     assert "hasRole('ADMIN')" in guards and "authenticated" in guards
 
 
-@needs_canonical
-def test_permit_all_first_match(canonical):
-    assert canonical[("POST", "/api/v1/auth/login")].effective_guards == ["permitAll"]
-    wildcard = canonical[("POST", "/api/v1/signup/identity-verifications/{verification_id}/complete")]
+def test_permit_all_first_match(extended):
+    assert extended[("POST", "/api/v1/auth/login")].effective_guards == ["permitAll"]
+    wildcard = extended[("POST", "/api/v1/signup/verifications/{verificationId}/complete")]
     assert wildcard.effective_guards == ["permitAll"]
 
 
-@needs_canonical
-def test_filter_added_to_middleware(canonical):
-    entry = canonical[("DELETE", "/api/v1/admin/members/{account_id}")]
-    assert "SessionAccountFilter" in [g.symbol for g in entry.middleware] and entry.middleware_complete
+def test_filter_added_to_middleware(extended):
+    entry = extended[("DELETE", "/api/v1/admin/members/{id}")]
+    assert "SessionMemberFilter" in [g.symbol for g in entry.middleware] and entry.middleware_complete
 
 
-@needs_canonical
-def test_dispatcher_matcher_not_first_match(canonical):
-    assert "permitAll" not in canonical[("GET", "/api/v1/me/profile")].effective_guards
+def test_dispatcher_matcher_not_first_match(extended):
+    assert extended[("GET", "/api/v1/me/profile")].effective_guards == ["authenticated"]
 
 
 def test_first_matching_rule_wins(tmp_path):

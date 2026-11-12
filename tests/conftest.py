@@ -1,7 +1,21 @@
+import shutil
+from pathlib import Path
+
 import pytest
 from fake_llm import FakeLlm
 
 from taki.config import AgentConfig
+
+MEMBERS = Path(__file__).parent / "fixtures" / "spring-members"
+
+
+@pytest.fixture(scope="session")
+def extended_app(tmp_path_factory):
+    """vulnerable 앱 위에 extended/app을 덮은 앱. 화면·필터·permitAll·가입 API 등을 더했다."""
+    root = tmp_path_factory.mktemp("extended") / "app"
+    shutil.copytree(MEMBERS / "vulnerable", root)
+    shutil.copytree(MEMBERS / "extended" / "app", root, dirs_exist_ok=True)
+    return root
 
 
 @pytest.fixture(autouse=True)
