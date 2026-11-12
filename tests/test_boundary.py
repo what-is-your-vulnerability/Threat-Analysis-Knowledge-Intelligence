@@ -4,13 +4,25 @@ import taki
 import taki.service
 
 SERVER_NAMES = {
-    "AgentConfig", "BudgetExceeded", "ConfigError", "ForbiddenPathError", "LlmCallError", "LlmFormatError", "RunMode",
-    "RunResult", "SecretLeft", "SecurityRule", "__version__", "check_allowed", "load_config", "run_scan",
+    "AgentConfig",
+    "BudgetExceeded",
+    "ConfigError",
+    "ForbiddenPathError",
+    "LlmCallError",
+    "LlmFormatError",
+    "RunMode",
+    "RunResult",
+    "SecretLeft",
+    "SecurityRule",
+    "__version__",
+    "check_allowed",
+    "load_config",
+    "run_scan",
 }
 
 
 def test_public_api_kept():
-    assert SERVER_NAMES <= set(taki.__all__)
+    assert set(taki.__all__) >= SERVER_NAMES
     assert all(hasattr(taki, name) for name in SERVER_NAMES)
 
 

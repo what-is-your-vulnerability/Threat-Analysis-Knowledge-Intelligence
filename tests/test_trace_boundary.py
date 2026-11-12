@@ -50,8 +50,16 @@ def test_hide_payload_keeps_llm_and_drops_code():
     llm_in = {"model": "m", "messages": [{"role": "user", "content": MARK}]}
     llm_out = {"choices": [{"message": {"content": MARK}}]}
     assert tracing.hide_payload(llm_in) is llm_in and tracing.hide_payload(llm_out) is llm_out
-    state = {"history": [{"content": MARK}], "case": CASE, "used": 3, "done": False, "error": "e",
-             "slice_text": MARK, "path": Path("/a/B.java"), "gateway": object()}
+    state = {
+        "history": [{"content": MARK}],
+        "case": CASE,
+        "used": 3,
+        "done": False,
+        "error": "e",
+        "slice_text": MARK,
+        "path": Path("/a/B.java"),
+        "gateway": object(),
+    }
     brief = tracing.hide_payload(state)
     assert MARK not in _dump(brief) and state["slice_text"] == MARK  # 원본 상태는 건드리지 않는다
     assert brief["used"] == 3 and brief["done"] is False and brief["case"] == "c1" and brief["error"] == "e"
@@ -66,8 +74,10 @@ def test_graph_runs_keep_code_out(fake, tmp_path, recorded):
     snapshot = scan_scope(root)
     tools = ReadOnlyTools(snapshot, build_index(snapshot), parse_mappers(snapshot), [], [])
     gateway = LlmGateway(make_config(fake, langsmith_project="t"), tmp_path / "o")
-    fake.responses += [{"tool_calls": [{"name": "read_code", "arguments": {"path": "src/A.java", "start": 1, "end": 1}}]},
-                       {"tool_calls": [{"name": "submit_result", "arguments": {"claims": []}}]}]
+    fake.responses += [
+        {"tool_calls": [{"name": "read_code", "arguments": {"path": "src/A.java", "start": 1, "end": 1}}]},
+        {"tool_calls": [{"name": "submit_result", "arguments": {"claims": []}}]},
+    ]
     with tracing_context(enabled=True, project_name="t", client=tracing.trace_client()):
         investigate(CASE, f"code {MARK}", gateway=gateway, tools=tools)
     assert any("history" in data for data, _ in seen)  # 도구 반복 그래프의 단계 기록이 이 클라이언트로 갔다
@@ -87,8 +97,14 @@ def test_scan_runs_keep_code_out(fake, tmp_path, recorded):
     seen, posts = recorded
     code = "public void delete(@PathVariable long id)"  # 묶음 글과 재검토·수정 제안에 들어가는 코드
     fake.responses.extend(json.loads((FIX / "fake_script.json").read_text(encoding="utf-8")))
-    run_scan(FIX / "vulnerable", design=[FIX / "design.md"], out=tmp_path, config=make_config(fake, langsmith_project="t"),
-             slices_file=FIX / "slices.yml", rules=load_rules(FIX / "rules.yml"))
+    run_scan(
+        FIX / "vulnerable",
+        design=[FIX / "design.md"],
+        out=tmp_path,
+        config=make_config(fake, langsmith_project="t"),
+        slices_file=FIX / "slices.yml",
+        rules=load_rules(FIX / "rules.yml"),
+    )
     graph = [(data, result) for data, result in seen if not tracing.is_llm_payload(data)]
     assert posts and any("slice_text" in data for data, _ in graph)  # 조사 항목 그래프의 단계 기록이 지났다
     assert all(code not in _dump(result) for _, result in graph)

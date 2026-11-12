@@ -8,8 +8,14 @@ PATH_STATES = {VerdictState.missing_suspected, VerdictState.unverified}
 
 
 def _step(hop: Hop, source: str, symbol: str | None, symbols: dict[str, str]) -> dict:
-    return {"file": hop.file, "start": hop.start, "end": hop.end,
-            "symbol": symbol or symbols.get(f"{hop.file}:{hop.start}"), "role": hop.role.value, "source": source}
+    return {
+        "file": hop.file,
+        "start": hop.start,
+        "end": hop.end,
+        "symbol": symbol or symbols.get(f"{hop.file}:{hop.start}"),
+        "role": hop.role.value,
+        "source": source,
+    }
 
 
 def _covered(hop: Hop, steps: list[dict]) -> bool:
@@ -25,15 +31,26 @@ def finding_paths(result) -> list[dict]:
             continue
         # 흐름이 여럿이어도 첫 흐름만 쓴다. 다른 API의 경로를 이어 붙이면 없는 호출을 그리게 된다.
         flow = next((flows[i] for i in finding.flows if i in flows and flows[i].hops), None)
-        steps = [_step(h, "flow", flow.handler_symbol if h.role == Role.entrypoint else None, symbols)
-                 for h in (flow.hops if flow else [])]
+        steps = (
+            [_step(h, "flow", flow.handler_symbol if h.role == Role.entrypoint else None, symbols) for h in flow.hops]
+            if flow
+            else []
+        )
         for evidence in finding.evidence:
             for hop in evidence.hops:
                 if not _covered(hop, steps):
                     source = "tool" if hop.certainty == Certainty.tool_confirmed else "evidence"
-                    steps.append(_step(hop, source, evidence.root_symbol if hop.role == Role.root_control else None,
-                                       symbols))
+                    steps.append(
+                        _step(hop, source, evidence.root_symbol if hop.role == Role.root_control else None, symbols)
+                    )
         if steps:
-            paths.append({"finding_id": finding.finding_id, "cwe": finding.cwe, "state": finding.state.value,
-                          "statement": finding.statement, "steps": steps})
+            paths.append(
+                {
+                    "finding_id": finding.finding_id,
+                    "cwe": finding.cwe,
+                    "state": finding.state.value,
+                    "statement": finding.statement,
+                    "steps": steps,
+                }
+            )
     return paths

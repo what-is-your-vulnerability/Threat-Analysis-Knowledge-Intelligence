@@ -8,10 +8,12 @@ SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 
 
 def _location(hop: Hop) -> dict:
-    return {"physicalLocation": {
-        "artifactLocation": {"uri": hop.file},
-        "region": {"startLine": hop.start, "endLine": hop.end},
-    }}
+    return {
+        "physicalLocation": {
+            "artifactLocation": {"uri": hop.file},
+            "region": {"startLine": hop.start, "endLine": hop.end},
+        }
+    }
 
 
 def _result(path: EvidencePath) -> dict:

@@ -94,9 +94,13 @@ def test_unknown_receiver_falls_back_to_name(index):
 
 
 def test_field_usages_cross_java_and_xml(tmp_path):
-    (tmp_path / "A.java").write_text("class A {\n  private long accountId;\n  long getAccountId() { return accountId; }\n}\n")
-    (tmp_path / "m.xml").write_text("<mapper namespace='x'>\n<select id='a'>\nSELECT * FROM T WHERE ACCOUNT_ID = #{accountId}\n"
-                                    "</select>\n</mapper>\n")
+    (tmp_path / "A.java").write_text(
+        "class A {\n  private long accountId;\n  long getAccountId() { return accountId; }\n}\n"
+    )
+    (tmp_path / "m.xml").write_text(
+        "<mapper namespace='x'>\n<select id='a'>\nSELECT * FROM T WHERE ACCOUNT_ID = #{accountId}\n"
+        "</select>\n</mapper>\n"
+    )
     usages = build_index(scan_scope(tmp_path)).field_usages("accountId")
     assert {(u.file, u.line) for u in usages} == {("A.java", 2), ("A.java", 3), ("m.xml", 3)}
 

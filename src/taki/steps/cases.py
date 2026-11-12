@@ -33,9 +33,31 @@ from taki.steps.lenses import render_questions
 
 QUESTION_SUBJECT = "lenses"
 # 탐지 범위(docs/detection-scope.md, 2026-11-05 고정) 안의 CWE만 AI가 확인한다. 나머지 경고는 도구 결과로만 싣는다.
-IN_SCOPE_CWES = {"CWE-89", "CWE-943", "CWE-306", "CWE-862", "CWE-285", "CWE-639", "CWE-200", "CWE-213", "CWE-532",
-                 "CWE-209", "CWE-312", "CWE-916", "CWE-328", "CWE-319", "CWE-915", "CWE-602", "CWE-841", "CWE-840",
-                 "CWE-20", "CWE-798", "CWE-321", "CWE-347", "CWE-79"}
+IN_SCOPE_CWES = {
+    "CWE-89",
+    "CWE-943",
+    "CWE-306",
+    "CWE-862",
+    "CWE-285",
+    "CWE-639",
+    "CWE-200",
+    "CWE-213",
+    "CWE-532",
+    "CWE-209",
+    "CWE-312",
+    "CWE-916",
+    "CWE-328",
+    "CWE-319",
+    "CWE-915",
+    "CWE-602",
+    "CWE-841",
+    "CWE-840",
+    "CWE-20",
+    "CWE-798",
+    "CWE-321",
+    "CWE-347",
+    "CWE-79",
+}
 
 
 def load_rules(path: Path) -> list[SecurityRule]:
@@ -54,17 +76,28 @@ def build_cases(slices: list[Slice], rules: list[SecurityRule], budget: Budget, 
                 continue
             for flow in slice_.flows:
                 if _matches(rule, flow.flow_id):
-                    cases.append(Case(
-                        case_id=make_case_id(CaseSource.rule, rule.rule_id, slice_.name, flow.flow_id),
-                        source=CaseSource.rule, subject_id=rule.rule_id,
-                        question=f"{rule.title} (대상 API: {flow.flow_id})",
-                        slice_id=slice_.slice_id, flow_id=flow.flow_id, budget=budget,
-                    ))
+                    cases.append(
+                        Case(
+                            case_id=make_case_id(CaseSource.rule, rule.rule_id, slice_.name, flow.flow_id),
+                            source=CaseSource.rule,
+                            subject_id=rule.rule_id,
+                            question=f"{rule.title} (대상 API: {flow.flow_id})",
+                            slice_id=slice_.slice_id,
+                            flow_id=flow.flow_id,
+                            budget=budget,
+                        )
+                    )
         if lenses:
-            cases.append(Case(
-                case_id=make_case_id(CaseSource.question, QUESTION_SUBJECT, slice_.name), source=CaseSource.question,
-                subject_id=QUESTION_SUBJECT, question=render_questions(lenses), slice_id=slice_.slice_id, budget=budget,
-            ))
+            cases.append(
+                Case(
+                    case_id=make_case_id(CaseSource.question, QUESTION_SUBJECT, slice_.name),
+                    source=CaseSource.question,
+                    subject_id=QUESTION_SUBJECT,
+                    question=render_questions(lenses),
+                    slice_id=slice_.slice_id,
+                    budget=budget,
+                )
+            )
     return [*cases, *_alert_cases(slices, alerts, budget)]
 
 
@@ -88,8 +121,10 @@ def alert_case_id(alert: Fact, slice_: Slice) -> str:
 
 
 def _alert_line(alert: Fact) -> str:
-    line = (f"- 도구 {alert.tool}, 규칙 {alert.detail.get('rule', 'scanner')}, 위치 {alert.file}:{alert.line}, "
-            f"내용 {alert.detail.get('message', '')}")
+    line = (
+        f"- 도구 {alert.tool}, 규칙 {alert.detail.get('rule', 'scanner')}, 위치 {alert.file}:{alert.line}, "
+        f"내용 {alert.detail.get('message', '')}"
+    )
     return line + (f", 경로 {' -> '.join(alert.detail['flow'])}" if alert.detail.get("flow") else "")
 
 
@@ -103,7 +138,11 @@ def _alert_cases(slices: list[Slice], alerts, budget: Budget) -> list[Case]:
         if case_id not in cases:
             cwe = alert.detail["cwe"]
             cases[case_id] = Case(
-                case_id=case_id, source=CaseSource.alert, subject_id=cwe, slice_id=slice_.slice_id, budget=budget,
+                case_id=case_id,
+                source=CaseSource.alert,
+                subject_id=cwe,
+                slice_id=slice_.slice_id,
+                budget=budget,
                 question=f"스캐너 경고가 실제 문제인지 코드로 확인하라. {cwe}, 파일 {alert.file}.",
             )
         cases[case_id].question += "\n" + _alert_line(alert)
@@ -126,8 +165,16 @@ def _flow_hops(alert: Fact) -> list[Hop]:
     for step in alert.detail.get("flow", [])[:-1]:
         file, _, line = step.rpartition(":")
         if line.isdigit():  # 줄 번호가 없는 단계("file:None")는 위치를 지어내지 않고 뺀다
-            hops.append(Hop(file=file, start=int(line), end=int(line), quote="", role=Role.propagation,
-                            certainty=Certainty.tool_confirmed))
+            hops.append(
+                Hop(
+                    file=file,
+                    start=int(line),
+                    end=int(line),
+                    quote="",
+                    role=Role.propagation,
+                    certainty=Certainty.tool_confirmed,
+                )
+            )
     return hops
 
 
@@ -143,17 +190,38 @@ def pass_through_alerts(alerts, slices: list[Slice], failed_case_ids=frozenset()
             continue
         rule = alert.detail.get("rule", "scanner")
         message = alert.detail.get("message", rule)
-        hops = [*_flow_hops(alert), Hop(file=alert.file, start=alert.line or 1, end=alert.line or 1, role=Role.sink,
-                                        quote=alert.detail.get("snippet", ""), certainty=Certainty.tool_confirmed)]
-        evidence = EvidencePath(claim=Claim.defect, statement=message, cwe=alert.detail.get("cwe"), hops=hops,
-                                basis=[f"{alert.tool} {rule}"])
-        findings.append(Finding(
-            # 줄 번호 대신 코드 조각으로 ID를 만들어 줄이 밀려도 재검사에서 같은 이슈로 비교된다.
-            finding_id=make_finding_id(alert.file, rule, f"{alert.tool}:{alert.detail.get('snippet', '')}"),
-            state=VerdictState.unverified,
-            root_file=alert.file, broken_rule=rule, cwe=alert.detail.get("cwe"), statement=message, evidence=[evidence],
-            outcome=Outcome.warn, tool_confirmed=True,
-        ))
+        hops = [
+            *_flow_hops(alert),
+            Hop(
+                file=alert.file,
+                start=alert.line or 1,
+                end=alert.line or 1,
+                role=Role.sink,
+                quote=alert.detail.get("snippet", ""),
+                certainty=Certainty.tool_confirmed,
+            ),
+        ]
+        evidence = EvidencePath(
+            claim=Claim.defect,
+            statement=message,
+            cwe=alert.detail.get("cwe"),
+            hops=hops,
+            basis=[f"{alert.tool} {rule}"],
+        )
+        findings.append(
+            Finding(
+                # 줄 번호 대신 코드 조각으로 ID를 만들어 줄이 밀려도 재검사에서 같은 이슈로 비교된다.
+                finding_id=make_finding_id(alert.file, rule, f"{alert.tool}:{alert.detail.get('snippet', '')}"),
+                state=VerdictState.unverified,
+                root_file=alert.file,
+                broken_rule=rule,
+                cwe=alert.detail.get("cwe"),
+                statement=message,
+                evidence=[evidence],
+                outcome=Outcome.warn,
+                tool_confirmed=True,
+            )
+        )
     return findings
 
 
@@ -169,8 +237,9 @@ def _lens_cell(lens, case: Case, result) -> LedgerCell:
         reason = f"해당 없음: {answer.reason}" if answer.reason else "해당 없음"
         return LedgerCell(subject=lens.lens_id, target=target, state=LedgerState.checked, reason=reason)
     if lens.category not in {c.category for c in result.claims}:
-        return LedgerCell(subject=lens.lens_id, target=target, state=LedgerState.not_seen,
-                          reason="문제라고 답했지만 주장이 없음")
+        return LedgerCell(
+            subject=lens.lens_id, target=target, state=LedgerState.not_seen, reason="문제라고 답했지만 주장이 없음"
+        )
     return LedgerCell(subject=lens.lens_id, target=target, state=LedgerState.checked, reason="문제 주장 있음")
 
 
@@ -179,10 +248,13 @@ def update_ledger(ledger: list[LedgerCell], case: Case, result, *, error: str | 
     if case.source == CaseSource.question and result is not None and not error:
         ledger += [_lens_cell(lens, case, result) for lens in lenses]
     elif case.source == CaseSource.question:
-        ledger += [LedgerCell(subject=lens.lens_id, target=target, state=LedgerState.not_seen,
-                              reason=error or "결과 없음") for lens in lenses]
+        ledger += [
+            LedgerCell(subject=lens.lens_id, target=target, state=LedgerState.not_seen, reason=error or "결과 없음")
+            for lens in lenses
+        ]
     elif error or result is None:
-        ledger.append(LedgerCell(subject=case.subject_id, target=target, state=LedgerState.not_seen,
-                                 reason=error or "결과 없음"))
+        ledger.append(
+            LedgerCell(subject=case.subject_id, target=target, state=LedgerState.not_seen, reason=error or "결과 없음")
+        )
     else:
         ledger.append(LedgerCell(subject=case.subject_id, target=target, state=LedgerState.checked))

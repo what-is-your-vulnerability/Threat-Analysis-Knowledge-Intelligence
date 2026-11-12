@@ -13,8 +13,14 @@ from taki.schemas.models import Capability, Certainty, Fact, LedgerCell, LedgerS
 CWE_RE = re.compile(r"cwe[-_/]?0*(\d+)", re.IGNORECASE)
 MAX_FLOW_STEPS = 10
 # 탐지 범위 밖 유형. AI가 판정하지 않고, 규칙이 없으면 못 본 범위로 알린다.
-OUT_OF_SCOPE_CWES = {"CWE-918": "SSRF", "CWE-22": "경로 조작", "CWE-611": "XXE", "CWE-502": "역직렬화",
-                     "CWE-352": "CSRF", "CWE-400": "서비스 거부"}
+OUT_OF_SCOPE_CWES = {
+    "CWE-918": "SSRF",
+    "CWE-22": "경로 조작",
+    "CWE-611": "XXE",
+    "CWE-502": "역직렬화",
+    "CWE-352": "CSRF",
+    "CWE-400": "서비스 거부",
+}
 
 
 @dataclass
@@ -26,7 +32,7 @@ class ScanOutcome:
 
 
 def normalize_cwe(text: str) -> str | None:
-    """"external/cwe/cwe-089", "CWE-89: ..." 같은 표기를 "CWE-89"로 맞춘다."""
+    """ "external/cwe/cwe-089", "CWE-89: ..." 같은 표기를 "CWE-89"로 맞춘다."""
     match = CWE_RE.search(str(text))
     return f"CWE-{int(match.group(1))}" if match else None
 
@@ -42,7 +48,8 @@ def _arr(value) -> list:
 
 def _rule_cwes(rule: dict) -> list[str]:
     props = _obj(rule.get("properties"))
-    texts = [*_arr(props.get("tags")), *(props.get("cwe") if isinstance(props.get("cwe"), list) else [props.get("cwe")])]
+    cwe = props.get("cwe")
+    texts = [*_arr(props.get("tags")), *(cwe if isinstance(cwe, list) else [cwe])]
     found = [normalize_cwe(t) for t in texts if t]
     return list(dict.fromkeys(c for c in found if c))
 
@@ -51,7 +58,7 @@ def _relative(uri: str) -> str:
     return unquote(uri).removeprefix("file://").removeprefix("/src/").removeprefix("./")
 
 
-def _where(location: dict) -> tuple[str, dict]:
+def _where(location: object) -> tuple[str, dict]:
     physical = _obj(_obj(location).get("physicalLocation"))
     return _relative(_obj(physical.get("artifactLocation")).get("uri") or ""), _obj(physical.get("region"))
 
@@ -88,8 +95,11 @@ def parse_sarif(path: Path, tool: str) -> ScanOutcome:
         for invocation in map(_obj, _arr(run.get("invocations"))):
             if invocation.get("executionSuccessful") is False:
                 errors.append("도구가 실패로 끝남")
-            errors += [str(_obj(n.get("message")).get("text") or "")
-                       for n in map(_obj, _arr(invocation.get("toolExecutionNotifications"))) if n.get("level") == "error"]
+            errors += [
+                str(_obj(n.get("message")).get("text") or "")
+                for n in map(_obj, _arr(invocation.get("toolExecutionNotifications")))
+                if n.get("level") == "error"
+            ]
         if not isinstance(run.get("results"), list):
             errors.append("결과 목록이 없음(도구가 결과를 내지 못함)")  # SARIF에서 results가 null이면 실패한 실행이다
         for result in map(_obj, _arr(run.get("results"))):
@@ -98,21 +108,42 @@ def parse_sarif(path: Path, tool: str) -> ScanOutcome:
             flow = _flow(result)
             for location in _arr(result.get("locations"))[:1]:
                 file, region = _where(location)
-                detail = {"rule": rule_id, "cwe": cwes[0] if cwes else None,
-                          "message": _obj(result.get("message")).get("text", ""),
-                          "snippet": _obj(region.get("snippet")).get("text", "")}
+                detail = {
+                    "rule": rule_id,
+                    "cwe": cwes[0] if cwes else None,
+                    "message": _obj(result.get("message")).get("text", ""),
+                    "snippet": _obj(region.get("snippet")).get("text", ""),
+                }
                 if flow:
                     detail["flow"] = flow
-                alerts.append(Fact(kind="alert", file=file, line=region.get("startLine"), symbol=rule_id, tool=tool,
-                                   tool_version=driver.get("semanticVersion") or driver.get("version"),
-                                   certainty=Certainty.tool_confirmed, detail=detail))
+                alerts.append(
+                    Fact(
+                        kind="alert",
+                        file=file,
+                        line=region.get("startLine"),
+                        symbol=rule_id,
+                        tool=tool,
+                        tool_version=driver.get("semanticVersion") or driver.get("version"),
+                        certainty=Certainty.tool_confirmed,
+                        detail=detail,
+                    )
+                )
     return ScanOutcome(Capability.partial if errors else Capability.supported, alerts, errors, covered)
 
 
 def coverage_gaps(covered: set[str]) -> list[LedgerCell]:
     """규칙이 없는 범위 밖 유형을 알린다. 탐지 범위 밖이라 경고로 치지 않고 deferred로 남긴다."""
-    cells = [LedgerCell(subject=f"{name} ({cwe})", target="*", state=LedgerState.deferred, reason="이 유형은 검사 규칙 없음")
-             for cwe, name in OUT_OF_SCOPE_CWES.items() if cwe not in covered]
-    cells.append(LedgerCell(subject="의존성 CVE", target="*", state=LedgerState.deferred,
-                            reason="이 유형은 검사 규칙 없음(라이브러리 점검은 다음 단계)"))
+    cells = [
+        LedgerCell(subject=f"{name} ({cwe})", target="*", state=LedgerState.deferred, reason="이 유형은 검사 규칙 없음")
+        for cwe, name in OUT_OF_SCOPE_CWES.items()
+        if cwe not in covered
+    ]
+    cells.append(
+        LedgerCell(
+            subject="의존성 CVE",
+            target="*",
+            state=LedgerState.deferred,
+            reason="이 유형은 검사 규칙 없음(라이브러리 점검은 다음 단계)",
+        )
+    )
     return cells

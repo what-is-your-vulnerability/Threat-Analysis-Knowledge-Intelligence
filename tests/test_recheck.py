@@ -21,7 +21,8 @@ def _changes(tmp_path, before, after, files=("A.java",)):
 
 def test_fixed_is_resolved(tmp_path):
     assert _changes(tmp_path, [_verdict("c", "missing_suspected")], [_verdict("c", "implemented", code_hash="h2")]) == {
-        ("c", "k1"): "resolved"}
+        ("c", "k1"): "resolved"
+    }
 
 
 def test_still_missing(tmp_path):
@@ -34,8 +35,12 @@ def test_new_problem(tmp_path):
 
 
 def test_removed_file_is_not_resolved(tmp_path):
-    changes = _changes(tmp_path, [_verdict("c", "missing_suspected")], [_verdict("c", "implemented", code_hash="h2")],
-                       files=("B.java",))
+    changes = _changes(
+        tmp_path,
+        [_verdict("c", "missing_suspected")],
+        [_verdict("c", "implemented", code_hash="h2")],
+        files=("B.java",),
+    )
     assert changes == {("c", "k1"): "unverifiable"}
 
 
@@ -50,7 +55,8 @@ def test_unverified_now_is_not_resolved(tmp_path):
 
 def test_same_code_changed_verdict_is_unstable(tmp_path):
     assert _changes(tmp_path, [_verdict("c", "missing_suspected")], [_verdict("c", "implemented")]) == {
-        ("c", "k1"): "unstable"}
+        ("c", "k1"): "unstable"
+    }
 
 
 def test_two_claims_in_one_case_tracked_separately(tmp_path):
@@ -76,7 +82,9 @@ def test_regression_is_new(tmp_path):
 def test_extra_claim_in_same_case_is_new(tmp_path):
     after = [_verdict("c", "missing_suspected", "k1", "h2"), _verdict("c", "missing_suspected", "k2", "h2")]
     assert _changes(tmp_path, [_verdict("c", "missing_suspected", "k1")], after) == {
-        ("c", "k1"): "still", ("c", "k2"): "new"}
+        ("c", "k1"): "still",
+        ("c", "k2"): "new",
+    }
 
 
 def _report_with(path, verdicts=(), findings=(), ledger=(), files=("A.java",)):
@@ -86,8 +94,14 @@ def _report_with(path, verdicts=(), findings=(), ledger=(), files=("A.java",)):
     return path
 
 
-SCANNER_FINDING = {"finding_id": "f1", "tool_confirmed": True, "case_ids": [], "state": "unverified",
-                   "root_file": "A.java", "evidence": [{"basis": ["semgrep r"]}]}
+SCANNER_FINDING = {
+    "finding_id": "f1",
+    "tool_confirmed": True,
+    "case_ids": [],
+    "state": "unverified",
+    "root_file": "A.java",
+    "evidence": [{"basis": ["semgrep r"]}],
+}
 RAN = {"subject": "scanner:semgrep", "target": "*", "state": "checked", "reason": "실행함"}
 
 

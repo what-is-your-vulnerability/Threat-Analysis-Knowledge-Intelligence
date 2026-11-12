@@ -48,7 +48,7 @@ class _Block:
     parts: list = field(default_factory=list)  # 글자 또는 ("include", refid)
 
 
-def _parse_file(text: str) -> tuple[str | None, list[_Block]]:
+def _parse_file(text: str | bytes) -> tuple[str | None, list[_Block]]:
     namespace: list[str | None] = [None]
     blocks: list[_Block] = []
     stack: list[_Block] = []
@@ -117,6 +117,8 @@ def parse_mappers(snapshot: Snapshot) -> MapperIndex:
             if b"<mapper" in raw:
                 index.errors.append(f"{entry.path}: XML을 읽지 못함 ({e})")
             continue
+        if namespace is None:  # mapper가 아닌 XML이면 blocks도 비어 있다
+            continue
         for block in blocks:
             block.file = entry.path
             parsed.append((entry.path, namespace, block))
@@ -130,8 +132,16 @@ def parse_mappers(snapshot: Snapshot) -> MapperIndex:
         sql = _expand(block, namespace, fragments, index.errors, used).strip()
         tables = {t.upper() for t in TABLE_RE.findall(sql)} - NOT_TABLES
         index[(namespace, block.id)] = MapperStatement(
-            namespace=namespace, id=block.id, kind=block.kind, file=path, start=block.start, end=block.end, sql=sql,
-            tables=tables, dollar_params=set(DOLLAR_RE.findall(sql)), hash_params=set(HASH_RE.findall(sql)),
+            namespace=namespace,
+            id=block.id,
+            kind=block.kind,
+            file=path,
+            start=block.start,
+            end=block.end,
+            sql=sql,
+            tables=tables,
+            dollar_params=set(DOLLAR_RE.findall(sql)),
+            hash_params=set(HASH_RE.findall(sql)),
             fragments=used,
         )
     return index

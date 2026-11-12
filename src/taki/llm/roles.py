@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from fnmatch import fnmatchcase
 from pathlib import Path
+from typing import cast
 
 import yaml
 from pydantic import BaseModel, Field
@@ -84,8 +85,10 @@ def _messages(version: str, *blocks: str) -> list[dict]:
 
 def _claim_for_reader(evidence: EvidencePath) -> str:
     # 재검토자가 조사자의 추론에 끌려가지 않도록 주장과 인용만 전달한다.
-    shown = evidence.model_dump(mode="json", include={"claim", "statement", "cwe", "category", "hops", "root_symbol",
-                                                      "expected_positions", "basis"})
+    shown = evidence.model_dump(
+        mode="json",
+        include={"claim", "statement", "cwe", "category", "hops", "root_symbol", "expected_positions", "basis"},
+    )
     return json.dumps(shown, ensure_ascii=False, indent=1)
 
 
@@ -106,16 +109,30 @@ def investigate(
     if feedback:
         blocks.append(feedback)
     if tools is not None:
-        return run_tool_loop(
-            "investigate", _messages("investigate_v1", *blocks), prompt_version="investigate_v1",
-            schema=InvestigateResult, tools=tools, gateway=gateway, budget=case.budget, case_id=case.case_id,
-            sent_files=sent_files,
+        return cast(
+            InvestigateResult,
+            run_tool_loop(
+                "investigate",
+                _messages("investigate_v1", *blocks),
+                prompt_version="investigate_v1",
+                schema=InvestigateResult,
+                tools=tools,
+                gateway=gateway,
+                budget=case.budget,
+                case_id=case.case_id,
+                sent_files=sent_files,
+            ),
         )
     response = gateway.complete(
-        "investigate", _messages("investigate_v1", *blocks), prompt_version="investigate_v1",
-        schema=InvestigateResult, budget=case.budget, case_id=case.case_id, sent_files=sent_files,
+        "investigate",
+        _messages("investigate_v1", *blocks),
+        prompt_version="investigate_v1",
+        schema=InvestigateResult,
+        budget=case.budget,
+        case_id=case.case_id,
+        sent_files=sent_files,
     )
-    return response.parsed
+    return cast(InvestigateResult, response.parsed)
 
 
 def review(
@@ -130,16 +147,30 @@ def review(
 ) -> Review:
     blocks = [f"관점: {view}", wrap_data("CLAIM", _claim_for_reader(evidence)), wrap_data("CODE", slice_text)]
     if tools is not None:
-        out = run_tool_loop(
-            "review", _messages("review_v1", *blocks), prompt_version="review_v1", schema=_ReviewOutput, tools=tools,
-            gateway=gateway, budget=None, case_id=case_id, sent_files=sent_files,
+        out = cast(
+            _ReviewOutput,
+            run_tool_loop(
+                "review",
+                _messages("review_v1", *blocks),
+                prompt_version="review_v1",
+                schema=_ReviewOutput,
+                tools=tools,
+                gateway=gateway,
+                budget=None,
+                case_id=case_id,
+                sent_files=sent_files,
+            ),
         )
         return Review(result=out.result, reason=out.reason, evidence=out.evidence)
     response = gateway.complete(
-        "review", _messages("review_v1", *blocks), prompt_version="review_v1", schema=_ReviewOutput,
-        case_id=case_id, sent_files=sent_files,
+        "review",
+        _messages("review_v1", *blocks),
+        prompt_version="review_v1",
+        schema=_ReviewOutput,
+        case_id=case_id,
+        sent_files=sent_files,
     )
-    out = response.parsed
+    out = cast(_ReviewOutput, response.parsed)
     return Review(result=out.result, reason=out.reason, evidence=out.evidence)
 
 
@@ -153,10 +184,14 @@ def propose_fix(
 ) -> FixProposal:
     blocks = [wrap_data("CLAIM", _claim_for_reader(evidence)), wrap_data("CODE", slice_text)]
     response = gateway.complete(
-        "fix", _messages("fix_v1", *blocks), prompt_version="fix_v1", schema=FixProposal,
-        case_id=case_id, sent_files=sent_files,
+        "fix",
+        _messages("fix_v1", *blocks),
+        prompt_version="fix_v1",
+        schema=FixProposal,
+        case_id=case_id,
+        sent_files=sent_files,
     )
-    return response.parsed
+    return cast(FixProposal, response.parsed)
 
 
 def load_templates() -> list[dict]:
@@ -173,9 +208,14 @@ def derive_rules(design_docs, entrypoints: list[str], templates: list[dict], *, 
     blocks = [wrap_data(f"DESIGN {name}", text) for name, text in texts.items()]
     blocks.append(wrap_data("ENTRYPOINTS", "\n".join(entrypoints)))
     blocks.append(wrap_data("TEMPLATES", json.dumps(templates, ensure_ascii=False)))
-    response = gateway.complete("onboard", _messages("onboard_v1", *blocks), prompt_version="onboard_v1",
-                                schema=_DeriveOutput, sent_files=list(texts))
-    output = response.parsed
+    response = gateway.complete(
+        "onboard",
+        _messages("onboard_v1", *blocks),
+        prompt_version="onboard_v1",
+        schema=_DeriveOutput,
+        sent_files=list(texts),
+    )
+    output = cast(_DeriveOutput, response.parsed)
 
     derived = DerivedRules()
     derived.threats = [t.model_dump() for t in output.threats]
@@ -188,10 +228,15 @@ def derive_rules(design_docs, entrypoints: list[str], templates: list[dict], *, 
             continue
         if not any(fnmatchcase(e, p) for e in entrypoints for p in draft.applies_to):
             derived.warnings.append(f"맞는 API가 없는 규칙: {draft.title} {draft.applies_to}")
-        derived.append(SecurityRule(
-            rule_id=f"R{len(derived) + 1}", status=RuleStatus.pending, version=1,
-            out_of_standard=draft.standard_ref not in known, **draft.model_dump(),
-        ))
+        derived.append(
+            SecurityRule(
+                rule_id=f"R{len(derived) + 1}",
+                status=RuleStatus.pending,
+                version=1,
+                out_of_standard=draft.standard_ref not in known,
+                **draft.model_dump(),
+            )
+        )
     covered = {r.category for r in derived} | set(derived.category_notes)
     derived.warnings += [f"범주 {c}: 규칙도 해당 없음 이유도 없음" for c in range(1, 9) if c not in covered]
     return derived

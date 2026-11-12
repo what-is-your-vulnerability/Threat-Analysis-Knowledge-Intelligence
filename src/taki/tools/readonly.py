@@ -14,10 +14,14 @@ HEADING_RE = re.compile(r"^(#+)\s+(.*)$")
 
 
 def _function(tool: str, description: str, **properties) -> dict:
-    return {"type": "function", "function": {
-        "name": tool, "description": description,
-        "parameters": {"type": "object", "properties": properties, "required": list(properties)},
-    }}
+    return {
+        "type": "function",
+        "function": {
+            "name": tool,
+            "description": description,
+            "parameters": {"type": "object", "properties": properties, "required": list(properties)},
+        },
+    }
 
 
 STRING = {"type": "string"}
@@ -80,7 +84,8 @@ class ReadOnlyTools:
         if self.index is None:
             return "오류: 이 언어는 호출 정보를 지원하지 않음"
         found = [
-            s for s in self.index.symbols()
+            s
+            for s in self.index.symbols()
             for call in self.index.calls_from(s)
             if symbol in self.index.resolve_call(s, call).targets
         ]

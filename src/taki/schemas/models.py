@@ -48,7 +48,7 @@ class VerdictState(str, Enum):
 
 
 class Outcome(str, Enum):
-    pass_ = "pass"
+    pass_ = "pass"  # noqa: S105 판정 결과 값이지 비밀번호가 아니다
     warn = "warn"
     block = "block"
 

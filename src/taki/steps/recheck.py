@@ -30,7 +30,11 @@ def _change(before: dict, same_case: list[dict], files: set[str]) -> str:
     same_claim = [v for v in same_case if v["claim_key"] == before["claim_key"]]
     candidates = same_claim or same_case
     states = {v["state"] for v in candidates}
-    if before["code_hash"] and before["code_hash"] in {v["code_hash"] for v in same_case} and before["state"] not in states:
+    if (
+        before["code_hash"]
+        and before["code_hash"] in {v["code_hash"] for v in same_case}
+        and before["state"] not in states
+    ):
         return "unstable"
     if "missing_suspected" in states:
         return "still"
@@ -68,8 +72,11 @@ def compare_runs(previous: Path, current: Path) -> list[RecheckItem]:
 def _compare_scanner_findings(before_report: dict, after_report: dict) -> list[RecheckItem]:
     """AI 조사 없이 도구 결과로만 실린 이슈를 비교한다. 같은 도구가 정상 실행됐고 파일이 남아 있을 때만 해결로 친다."""
     after_ids = {f["finding_id"] for f in after_report.get("findings", [])}
-    ran = {c["subject"].removeprefix("scanner:") for c in after_report.get("ledger", [])
-           if c["subject"].startswith("scanner:") and c["state"] == "checked"}
+    ran = {
+        c["subject"].removeprefix("scanner:")
+        for c in after_report.get("ledger", [])
+        if c["subject"].startswith("scanner:") and c["state"] == "checked"
+    }
     files = set(after_report.get("files", []))
     items = []
     for finding in before_report.get("findings", []):

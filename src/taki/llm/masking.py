@@ -24,8 +24,11 @@ CONFIG_SUFFIXES = {".yml", ".yaml", ".properties", ".env", ".conf", ".ini", ".cf
 @lru_cache(maxsize=2)
 def _patterns(config_only: bool = False) -> list[tuple[str, re.Pattern, int]]:
     rows = yaml.safe_load((RULES_DIR / "secrets.yml").read_text(encoding="utf-8"))
-    return [(r["name"], re.compile(r["pattern"]), r.get("group", 0)) for r in rows
-            if r.get("config_only", False) == config_only]
+    return [
+        (r["name"], re.compile(r["pattern"]), r.get("group", 0))
+        for r in rows
+        if r.get("config_only", False) == config_only
+    ]
 
 
 def _is_masked(value: str) -> bool:
@@ -35,10 +38,7 @@ def _is_masked(value: str) -> bool:
 def find_secrets(text: str) -> list[str]:
     """아직 가려지지 않은 값이 있는 패턴 이름을 돌려준다."""
     return [
-        name
-        for name, pattern, group in _patterns()
-        for m in pattern.finditer(text)
-        if not _is_masked(m.group(group))
+        name for name, pattern, group in _patterns() for m in pattern.finditer(text) if not _is_masked(m.group(group))
     ]
 
 

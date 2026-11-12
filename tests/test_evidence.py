@@ -24,10 +24,24 @@ public class MemberController {
 """
 FILE = "MemberController.java"
 # 근거 확인 시험용 흐름: 핸들러 범위가 파일 전체라 위치 제한에 걸리지 않는다.
-GOOD_FLOW = Flow(flow_id="f1", method="DELETE", path="/m", middleware_complete=True,
-                 handler_file="MemberController.java", handler_start=1, handler_end=18)
-DELETE_FLOW = Flow(flow_id="DELETE /m", method="DELETE", path="/m", middleware_complete=True,
-                   handler_file="MemberController.java", handler_start=9, handler_end=12)
+GOOD_FLOW = Flow(
+    flow_id="f1",
+    method="DELETE",
+    path="/m",
+    middleware_complete=True,
+    handler_file="MemberController.java",
+    handler_start=1,
+    handler_end=18,
+)
+DELETE_FLOW = Flow(
+    flow_id="DELETE /m",
+    method="DELETE",
+    path="/m",
+    middleware_complete=True,
+    handler_file="MemberController.java",
+    handler_start=9,
+    handler_end=12,
+)
 
 
 @pytest.fixture
@@ -46,8 +60,11 @@ def implemented(*hops, checked="hasRole('ADMIN')", used="hasRole('ADMIN')"):
 
 
 def absent(**kw):
-    values = {"hops": [hop("service.delete(id);", 10, 10)], "expected_positions": ["MemberController.delete"],
-              "basis": ["F3#4.6"]}
+    values = {
+        "hops": [hop("service.delete(id);", 10, 10)],
+        "expected_positions": ["MemberController.delete"],
+        "basis": ["F3#4.6"],
+    }
     return EvidencePath(claim=Claim.absent, statement="s", **{**values, **kw})
 
 
@@ -96,8 +113,11 @@ def test_quote_in_string_rejected_for_implemented(snapshot):
 
 
 def test_string_is_allowed_for_defect_path(snapshot):
-    p = EvidencePath(claim=Claim.defect, statement="s", hops=[
-        hop("public void delete(long id) {", 9, 9, Role.entrypoint), hop('"audit only"', 11, 11, Role.sink)])
+    p = EvidencePath(
+        claim=Claim.defect,
+        statement="s",
+        hops=[hop("public void delete(long id) {", 9, 9, Role.entrypoint), hop('"audit only"', 11, 11, Role.sink)],
+    )
     assert check_evidence(p, snapshot, [GOOD_FLOW]).passed
 
 
@@ -188,7 +208,9 @@ def test_implemented_in_guard_file_passes(snapshot):
 
 def test_flow_without_location_cannot_confirm_implemented(snapshot):
     bare = Flow(flow_id="f", method="DELETE", path="/m", middleware_complete=True)
-    assert CheckFailure.off_flow in check_evidence(implemented(hop("hasRole('ADMIN')", 4, 4)), snapshot, [bare]).failures
+    assert (
+        CheckFailure.off_flow in check_evidence(implemented(hop("hasRole('ADMIN')", 4, 4)), snapshot, [bare]).failures
+    )
     assert CheckFailure.off_flow in check_evidence(implemented(hop("hasRole('ADMIN')", 4, 4)), snapshot, []).failures
 
 
@@ -198,6 +220,10 @@ def test_not_applicable_needs_code_quote(snapshot):
 
 
 def test_not_applicable_from_comment_is_rejected(snapshot):
-    p = EvidencePath(claim=Claim.not_applicable, statement="게이트웨이", basis=["주석"],
-                     hops=[hop("관리자 확인은 게이트웨이에 있음", 3, 3)])
+    p = EvidencePath(
+        claim=Claim.not_applicable,
+        statement="게이트웨이",
+        basis=["주석"],
+        hops=[hop("관리자 확인은 게이트웨이에 있음", 3, 3)],
+    )
     assert CheckFailure.quote_in_comment in check_evidence(p, snapshot, [GOOD_FLOW]).failures

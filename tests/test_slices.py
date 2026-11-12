@@ -22,7 +22,9 @@ needs_canonical = pytest.mark.skipif(not CANONICAL.exists(), reason="정본 없�
 def slices_of(root, **kw):
     snapshot = scan_scope(root)
     index = build_index(snapshot)
-    return snapshot, build_slices(snapshot, extract_spring(snapshot, index).entrypoints, index, parse_mappers(snapshot), **kw)
+    return snapshot, build_slices(
+        snapshot, extract_spring(snapshot, index).entrypoints, index, parse_mappers(snapshot), **kw
+    )
 
 
 def lines_of(slice_, snapshot):
@@ -48,8 +50,14 @@ def test_admin_slice_contents(canonical):
     snapshot, slices = canonical
     admin = slices["admin"]
     files = {Path(f.path).name for f in admin.files}
-    assert {"MemberAdminController.java", "MemberViewController.java", "MemberAdminService.java", "AccountMapper.xml",
-            "SecurityConfig.java", "SessionAccountFilter.java"} <= files
+    assert {
+        "MemberAdminController.java",
+        "MemberViewController.java",
+        "MemberAdminService.java",
+        "AccountMapper.xml",
+        "SecurityConfig.java",
+        "SessionAccountFilter.java",
+    } <= files
     assert "SignupService.java" not in files and lines_of(admin, snapshot) <= 1500
 
 
@@ -71,7 +79,9 @@ def test_view_template_included(canonical):
 @needs_canonical
 def test_sql_fragment_lines_are_included(canonical):
     snapshot, slices = canonical
-    assert "memberColumns" in render_slice(slices["admin"], snapshot) and "C_RESIDENT_REG_NO" in render_slice(slices["admin"], snapshot)
+    assert "memberColumns" in render_slice(slices["admin"], snapshot) and "C_RESIDENT_REG_NO" in render_slice(
+        slices["admin"], snapshot
+    )
 
 
 @needs_canonical
@@ -80,7 +90,11 @@ def test_flow_has_hops_in_order(canonical):
     flow = next(f for f in slices["admin"].flows if f.flow_id == "DELETE /api/v1/admin/members/{account_id}")
     names = [Path(h.file).name for h in flow.hops]
     assert names[0] == "MemberAdminController.java"
-    assert names.index("MemberAdminController.java") < names.index("MemberAdminService.java") < names.index("AccountMapper.xml")
+    assert (
+        names.index("MemberAdminController.java")
+        < names.index("MemberAdminService.java")
+        < names.index("AccountMapper.xml")
+    )
     assert flow.hops[0].role == Role.entrypoint
     assert any(h.role == Role.sink and h.file.endswith("AccountMapper.xml") for h in flow.hops)
     assert flow.unresolved == [] and flow.middleware_complete
@@ -104,7 +118,9 @@ def test_related_writers_listed(canonical):
 def test_requirement_mapped_from_design(canonical):
     _, slices = canonical
     assert "F3-admin-members.md#4.6" in slices["admin"].requirement_refs
-    row = next(r for r in slices["admin"].sibling_table if r["path"].endswith("{account_id}") and r["method"] == "DELETE")
+    row = next(
+        r for r in slices["admin"].sibling_table if r["path"].endswith("{account_id}") and r["method"] == "DELETE"
+    )
     assert row["requirement"] == "F3-admin-members.md#4.6"
 
 
@@ -155,7 +171,9 @@ def test_code_hash_changes_with_guard(tmp_path):
 
 def test_overrides_add_and_remove_files(tmp_path):
     overrides = tmp_path / "over.yml"
-    overrides.write_text("- name: admin\n  add_files: [pom.xml]\n  remove_files: [src/main/java/demo/member/MemberService.java]\n")
+    overrides.write_text(
+        "- name: admin\n  add_files: [pom.xml]\n  remove_files: [src/main/java/demo/member/MemberService.java]\n"
+    )
     _, slices = slices_of(FIX / "vulnerable", overrides=overrides)
     files = {f.path for f in slices[0].files}
     assert "pom.xml" in files and "src/main/java/demo/member/MemberService.java" not in files
@@ -173,8 +191,13 @@ def test_no_framework_falls_back_to_partial(tmp_path):
 
 def test_e2e_without_manual_slices(fake, tmp_path):
     fake.responses.extend(json.loads((FIX / "fake_script.json").read_text(encoding="utf-8")))
-    r = run_scan(FIX / "vulnerable", design=[FIX / "design.md"], out=tmp_path, config=make_config(fake),
-                 rules=load_rules(FIX / "rules.yml"))
+    r = run_scan(
+        FIX / "vulnerable",
+        design=[FIX / "design.md"],
+        out=tmp_path,
+        config=make_config(fake),
+        rules=load_rules(FIX / "rules.yml"),
+    )
     assert r.exit_code == 1 and r.findings[0].state == VerdictState.missing_suspected
     assert r.findings[0].root_file.endswith("MemberController.java") and {c.slice_id for c in r.cases} == {"admin"}
 
@@ -196,10 +219,13 @@ def test_same_class_name_in_two_packages_is_not_mixed(tmp_path):
     (tmp_path / "pom.xml").write_text("<project>spring</project>\n")
     for pkg in ("a", "b"):
         (tmp_path / pkg).mkdir()
-        (tmp_path / pkg / "Repo.java").write_text(f"package {pkg};\npublic class Repo {{ public void remove() {{ int {pkg}Only = 1; }} }}\n")
+        (tmp_path / pkg / "Repo.java").write_text(
+            f"package {pkg};\npublic class Repo {{ public void remove() {{ int {pkg}Only = 1; }} }}\n"
+        )
         (tmp_path / pkg / "MemberController.java").write_text(
-            f'package {pkg};\n@RestController class MemberController {{\n  private Repo repo;\n'
-            f'  @DeleteMapping("/{pkg}/m") void delete() {{ repo.remove(); }}\n}}\n')
+            f"package {pkg};\n@RestController class MemberController {{\n  private Repo repo;\n"
+            f'  @DeleteMapping("/{pkg}/m") void delete() {{ repo.remove(); }}\n}}\n'
+        )
     _, slices = slices_of(tmp_path)
     by_name = {s.name: s for s in slices}
     assert {f.path for f in by_name["a"].files if "MemberController" in f.path} == {"a/MemberController.java"}

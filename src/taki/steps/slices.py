@@ -66,12 +66,16 @@ def render_slice(slice_: Slice, snapshot: Snapshot, alerts: Sequence[Fact] = ())
     parts: list[str] = []
     if alerts:
         parts.append("=== 정적분석 경고(도구 결과, 코드로 확인 필요) ===")
-        parts += [f"{a.tool} {a.detail.get('rule')} {a.detail.get('cwe')} {a.file}:{a.line} {a.detail.get('message', '')}"
-                  for a in alerts]
+        parts += [
+            f"{a.tool} {a.detail.get('rule')} {a.detail.get('cwe')} {a.file}:{a.line} {a.detail.get('message', '')}"
+            for a in alerts
+        ]
     if slice_.sibling_table:
         parts.append("=== 이 묶음의 API와 확인된 검사 ===")
-        parts += [f"{row['method']} {row['path']} | 검사: {', '.join(row['guards']) or '없음'}"
-                  for row in slice_.sibling_table]
+        parts += [
+            f"{row['method']} {row['path']} | 검사: {', '.join(row['guards']) or '없음'}"
+            for row in slice_.sibling_table
+        ]
     paths = [(f.flow_id, f.hops) for f in slice_.flows if f.hops]
     if paths:
         parts.append("=== 호출 경로 ===")
@@ -108,18 +112,29 @@ def load_slices(path: Path, snapshot: Snapshot) -> list[Slice]:
                     continue
             files.append(SliceFile(path=item["path"], ranges=ranges))
         flows = [
-            Flow(flow_id=flow_id(f["method"], f["path"]), method=f["method"].upper(), path=f["path"],
-                 handler_symbol=f.get("handler_symbol"), guards=f.get("guards", []),
-                 middleware_complete=f.get("middleware_complete", False), unresolved=f.get("unresolved", []))
+            Flow(
+                flow_id=flow_id(f["method"], f["path"]),
+                method=f["method"].upper(),
+                path=f["path"],
+                handler_symbol=f.get("handler_symbol"),
+                guards=f.get("guards", []),
+                middleware_complete=f.get("middleware_complete", False),
+                unresolved=f.get("unresolved", []),
+            )
             for f in row.get("flows", [])
         ]
         slice_ = Slice(
-            slice_id=row["name"], name=row["name"], flows=flows, files=files,
+            slice_id=row["name"],
+            name=row["name"],
+            flows=flows,
+            files=files,
             # 검사 목록을 적지 않은 흐름은 "검사 없음"으로 보이지 않게 표를 만들지 않는다.
             sibling_table=[{"method": f.method, "path": f.path, "guards": f.guards} for f in flows]
-            if all("guards" in f for f in row.get("flows", [])) else [],
+            if all("guards" in f for f in row.get("flows", []))
+            else [],
             requirement_refs=[row["requirement"]] if row.get("requirement") else [],
-            truncated=truncated, capability=Capability.partial if truncated else Capability.supported,
+            truncated=truncated,
+            capability=Capability.partial if truncated else Capability.supported,
         )
         slice_.code_hash = hashlib.sha256(render_slice(slice_, snapshot).encode()).hexdigest()
         slices.append(slice_)
@@ -143,10 +158,18 @@ def _line_of(snapshot: Snapshot, path: str, line: int) -> str:
 
 
 def _method_hop(snapshot, method: JavaMethod, role: Role, certainty: Certainty) -> Hop:
-    line = method.node.child_by_field_name("name").start_point[0] + 1
+    name = method.node.child_by_field_name("name")
+    line = name.start_point[0] + 1 if name is not None else method.start
     # end는 메서드 끝이다. 구현 근거가 이 호출 경로 안에 있는지 확인할 때 범위로 쓴다.
-    return Hop(file=method.file, start=line, end=method.end, quote=_line_of(snapshot, method.file, line), role=role,
-               relation=Relation.calls, certainty=certainty)
+    return Hop(
+        file=method.file,
+        start=line,
+        end=method.end,
+        quote=_line_of(snapshot, method.file, line),
+        role=role,
+        relation=Relation.calls,
+        certainty=certainty,
+    )
 
 
 def _follow_calls(entry: EntryPoint, snapshot, index: JavaIndex, mappers: MapperIndex) -> _Reach:
@@ -171,9 +194,16 @@ def _follow_calls(entry: EntryPoint, snapshot, index: JavaIndex, mappers: Mapper
             statement = mappers.get((f"{owner.package}.{owner.name}" if owner.package else owner.name, method.name))
             if statement:
                 reach.statements.append(statement)
-                reach.hops.append(Hop(file=statement.file, start=statement.start, end=statement.end,
-                                      quote=_line_of(snapshot, statement.file, statement.start), role=Role.sink,
-                                      relation=Relation.calls))
+                reach.hops.append(
+                    Hop(
+                        file=statement.file,
+                        start=statement.start,
+                        end=statement.end,
+                        quote=_line_of(snapshot, statement.file, statement.start),
+                        role=Role.sink,
+                        relation=Relation.calls,
+                    )
+                )
             elif "Mapper" in {a.name for a in owner.annotations} and not _has_sql_annotation(method):
                 reach.unresolved.append(f"{method.symbol} (매퍼 문장 없음)")
             continue
@@ -203,10 +233,11 @@ class _FileSet:
         if path not in self.lines:
             return
         self.priority[path] = min(priority, self.priority.get(path, priority))
-        if start is None:
+        ranges = self.ranges.setdefault(path, [])
+        if start is None or end is None:  # 범위 없이 넣으면 파일 전체
             self.ranges[path] = None
-        elif self.ranges.get(path, []) is not None:
-            self.ranges.setdefault(path, []).append((start, end))
+        elif ranges is not None:
+            ranges.append((start, end))
 
     def merged(self, path: str) -> list[tuple[int, int]] | None:
         ranges = self.ranges[path]
@@ -251,8 +282,11 @@ def _returned_views(method: JavaMethod) -> list[str]:
     views = []
     for node in walk(body) if body is not None else []:
         if node.type == "return_statement":
-            views += ["".join(c.text.decode() for c in child.children if c.type == "string_fragment")
-                      for child in node.children if child.type == "string_literal"]
+            views += [
+                "".join(c.text.decode() for c in child.children if c.type == "string_fragment")
+                for child in node.children
+                if child.type == "string_literal"
+            ]
     return views
 
 
@@ -292,7 +326,7 @@ def _normalize_route(path: str) -> str:
 
 
 def _requirement_map(design_docs) -> dict[tuple[str, str], str]:
-    found = {}
+    found: dict[tuple[str, str], str] = {}
     for doc in design_docs:
         section = None
         for line in Path(doc).read_text(encoding="utf-8", errors="replace").splitlines():
@@ -316,8 +350,12 @@ def _sibling_table(reaches: list[_Reach], requirements: dict) -> list[dict]:
         return []
     rows = []
     for reach in sorted(reaches, key=lambda r: (r.entry.method, r.entry.path_template)):
-        row = {"method": reach.entry.method, "path": reach.entry.path_template, "guards": reach.entry.effective_guards,
-               "handler": reach.entry.handler_symbol}
+        row = {
+            "method": reach.entry.method,
+            "path": reach.entry.path_template,
+            "guards": reach.entry.effective_guards,
+            "handler": reach.entry.handler_symbol,
+        }
         ref = requirements.get((reach.entry.method, _normalize_route(reach.entry.path_template)))
         if ref:
             row["requirement"] = ref
@@ -329,15 +367,19 @@ def _related(reaches: list[_Reach], others: list[_Reach], index: JavaIndex, tabl
     notes = [] if table_rows else ["같은 구간에 비교할 API 없음"]
     tables = {t for r in reaches for s in r.statements for t in s.tables}
     for table in sorted(tables):
-        writers = sorted({
-            f"{o.entry.method} {o.entry.path_template} ({o.entry.handler_symbol})"
-            for o in others for s in o.statements if s.kind != "select" and table in s.tables
-        })
+        writers = sorted(
+            {
+                f"{o.entry.method} {o.entry.path_template} ({o.entry.handler_symbol})"
+                for o in others
+                for s in o.statements
+                if s.kind != "select" and table in s.tables
+            }
+        )
         if writers:
             notes.append(f"{table}에 쓰는 다른 API: " + ", ".join(writers))
     owners = {m.class_name for r in reaches for m in r.methods}
     for fact in index.shared_state():
-        if fact.symbol.split(".")[0] in owners:
+        if (fact.symbol or "").split(".")[0] in owners:
             notes.append(f"공유 상태({fact.kind}): {fact.symbol} @ {fact.file}:{fact.line}")
     seen_fields = set()
     for owner in sorted(owners):
@@ -364,8 +406,11 @@ def _trim(files: _FileSet, max_lines: int) -> tuple[list[str], bool]:
 
 
 def _reach_files(reach: _Reach) -> set[str]:
-    return ({m.file for m in reach.methods} | {s.file for s in reach.statements}
-            | {path for s in reach.statements for path, _, _ in s.fragments})
+    return (
+        {m.file for m in reach.methods}
+        | {s.file for s in reach.statements}
+        | {path for s in reach.statements for path, _, _ in s.fragments}
+    )
 
 
 def _guard_files(entry: EntryPoint, index: JavaIndex) -> list[str]:
@@ -392,20 +437,37 @@ def _make_slice(name, reaches, table, requirements, snapshot, index, others, max
     dropped, guard_dropped = _trim(files, max_lines)
     truncated = [f"한도를 넘어 뺌: {path}" for path in dropped]
     flows = [
-        Flow(flow_id=flow_id(r.entry.method, r.entry.path_template), method=r.entry.method, path=r.entry.path_template,
-             handler_symbol=r.entry.handler_symbol, hops=r.hops, symbols=r.symbols, guards=r.entry.effective_guards,
-             middleware_complete=r.entry.middleware_complete and not guard_dropped,
-             # 한도로 뺀 코드를 지나는 흐름은 LLM이 다 보지 못했으므로 "없다" 주장을 입증할 수 없다.
-             unresolved=[*r.unresolved, *([r.entry.unresolved_reason] if r.entry.unresolved_reason else []),
-                         *(f"한도로 뺀 코드: {path}" for path in dropped if path in _reach_files(r))],
-             handler_file=r.entry.handler_file, handler_start=r.entry.handler_start, handler_end=r.entry.handler_end,
-             guard_files=_guard_files(r.entry, index))
+        Flow(
+            flow_id=flow_id(r.entry.method, r.entry.path_template),
+            method=r.entry.method,
+            path=r.entry.path_template,
+            handler_symbol=r.entry.handler_symbol,
+            hops=r.hops,
+            symbols=r.symbols,
+            guards=r.entry.effective_guards,
+            middleware_complete=r.entry.middleware_complete and not guard_dropped,
+            # 한도로 뺀 코드를 지나는 흐름은 LLM이 다 보지 못했으므로 "없다" 주장을 입증할 수 없다.
+            unresolved=[
+                *r.unresolved,
+                *([r.entry.unresolved_reason] if r.entry.unresolved_reason else []),
+                *(f"한도로 뺀 코드: {path}" for path in dropped if path in _reach_files(r)),
+            ],
+            handler_file=r.entry.handler_file,
+            handler_start=r.entry.handler_start,
+            handler_end=r.entry.handler_end,
+            guard_files=_guard_files(r.entry, index),
+        )
         for r in reaches
     ]
     slice_ = Slice(
-        slice_id=name, name=name, flows=flows, files=[SliceFile(path=p, ranges=files.merged(p)) for p in sorted(files.ranges)],
-        sibling_table=table, requirement_refs=sorted({row["requirement"] for row in table if "requirement" in row}),
-        related=_related(reaches, others, index, table), truncated=truncated,
+        slice_id=name,
+        name=name,
+        flows=flows,
+        files=[SliceFile(path=p, ranges=files.merged(p)) for p in sorted(files.ranges)],
+        sibling_table=table,
+        requirement_refs=sorted({row["requirement"] for row in table if "requirement" in row}),
+        related=_related(reaches, others, index, table),
+        truncated=truncated,
         capability=Capability.partial if truncated else Capability.supported,
     )
     slice_.code_hash = hashlib.sha256(render_slice(slice_, snapshot).encode()).hexdigest()
@@ -446,7 +508,9 @@ def _apply_overrides(slices: list[Slice], path: Path, snapshot: Snapshot) -> Non
             slice_.code_hash = hashlib.sha256(render_slice(slice_, snapshot).encode()).hexdigest()
 
 
-def build_slices(snapshot, entrypoints, index, mappers, *, design_docs=(), max_lines=1500, overrides=None) -> list[Slice]:
+def build_slices(
+    snapshot, entrypoints, index, mappers, *, design_docs=(), max_lines=1500, overrides=None
+) -> list[Slice]:
     requirements = _requirement_map(design_docs)
     reaches = [_follow_calls(e, snapshot, index, mappers) for e in entrypoints]
     groups: dict[str, list[_Reach]] = {}
@@ -475,8 +539,12 @@ def fallback_slices(snapshot: Snapshot, max_lines: int = 1500) -> list[Slice]:
         for entry in [*entries, None]:
             if entry is None or (chunk and size + entry.lines > max_lines):
                 name = f"{folder}#{part}"
-                slice_ = Slice(slice_id=name, name=name, files=[SliceFile(path=e.path) for e in chunk],
-                               capability=Capability.partial)
+                slice_ = Slice(
+                    slice_id=name,
+                    name=name,
+                    files=[SliceFile(path=e.path) for e in chunk],
+                    capability=Capability.partial,
+                )
                 slice_.code_hash = hashlib.sha256(render_slice(slice_, snapshot).encode()).hexdigest()
                 slices.append(slice_)
                 chunk, size, part = [], 0, part + 1

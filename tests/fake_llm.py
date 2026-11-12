@@ -6,18 +6,25 @@ import argparse
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 
 def _completion(item: dict) -> dict:
     message = {"role": "assistant", "content": item.get("content")}
     if item.get("tool_calls"):
         message["tool_calls"] = [
-            {"id": f"call_{i}", "type": "function",
-             "function": {"name": c["name"], "arguments": json.dumps(c.get("arguments", {}), ensure_ascii=False)}}
+            {
+                "id": f"call_{i}",
+                "type": "function",
+                "function": {"name": c["name"], "arguments": json.dumps(c.get("arguments", {}), ensure_ascii=False)},
+            }
             for i, c in enumerate(item["tool_calls"])
         ]
     return {
-        "id": "fake", "object": "chat.completion", "created": 0, "model": "fake",
+        "id": "fake",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "fake",
         "choices": [{"index": 0, "message": message, "finish_reason": item.get("finish_reason", "stop")}],
         "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
     }
@@ -81,7 +88,7 @@ def main() -> None:
     parser.add_argument("script")
     parser.add_argument("--port", type=int, default=0)  # 0이면 비어 있는 포트를 쓴다.
     args = parser.parse_args()
-    with open(args.script, encoding="utf-8") as f, FakeLlm(json.load(f), port=args.port) as fake:
+    with Path(args.script).open(encoding="utf-8") as f, FakeLlm(json.load(f), port=args.port) as fake:
         print(fake.url, flush=True)
         threading.Event().wait()
 
