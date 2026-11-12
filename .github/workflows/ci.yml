@@ -1,5 +1,6 @@
-# 엔진(taki)용. dev·main으로 가는 PR과 dev push에서 린트와 시험을 돌린다.
-# 모의 LLM으로 도는 시험만 실행하므로 비밀값이 필요 없다. docker·postgres·codeql 시험은 제외된다(pyproject.toml).
+# 엔진(taki)용. dev·main으로 가는 PR과 dev push에서 .pre-commit-config.yaml 검사를 돌린다
+# (ruff check, ruff format --check, mypy, pytest). 로컬 훅과 CI가 같은 목록을 쓴다.
+# 모의 LLM으로 도는 시험만 실행하므로 비밀값이 필요 없다. docker·codeql 시험은 제외된다(pyproject.toml).
 name: ci
 
 on:
@@ -28,5 +29,4 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --frozen
-      - run: uv run ruff check .
-      - run: uv run pytest
+      - run: uv run pre-commit run --all-files --show-diff-on-failure
