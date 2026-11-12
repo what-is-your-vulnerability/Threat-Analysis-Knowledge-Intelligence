@@ -30,7 +30,11 @@ def _change(before: dict, same_case: list[dict], files: set[str]) -> str:
     same_claim = [v for v in same_case if v["claim_key"] == before["claim_key"]]
     candidates = same_claim or same_case
     states = {v["state"] for v in candidates}
-    if before["code_hash"] and before["code_hash"] in {v["code_hash"] for v in same_case} and before["state"] not in states:
+    if (
+        before["code_hash"]
+        and before["code_hash"] in {v["code_hash"] for v in same_case}
+        and before["state"] not in states
+    ):
         return "unstable"
     if "missing_suspected" in states:
         return "still"

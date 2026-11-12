@@ -103,7 +103,9 @@ def group_findings(verdicts: list[Verdict], cases: list[Case], tool_confirmed_id
         if case.source == CaseSource.rule:
             finding_id = make_finding_id(file, evidence.root_symbol, case.subject_id)
         else:
-            finding_id = by_root.get(root) or make_finding_id(file, evidence.root_symbol, f"{case.source.value}:{evidence.category}")
+            finding_id = by_root.get(root) or make_finding_id(
+                file, evidence.root_symbol, f"{case.source.value}:{evidence.category}"
+            )
         by_root.setdefault(root, finding_id)
         finding = findings.setdefault(finding_id, Finding(
             finding_id=finding_id, state=verdict.state, root_file=file, root_symbol=evidence.root_symbol,

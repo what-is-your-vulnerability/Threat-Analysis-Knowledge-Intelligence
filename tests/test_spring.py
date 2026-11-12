@@ -12,7 +12,10 @@ ROOT = Path(__file__).resolve().parents[2]
 CANONICAL = ROOT / "benchmarks" / "canonical-bss"
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 needs_canonical = pytest.mark.skipif(not CANONICAL.exists(), reason="정본 없음")
-POM = "<project><dependencies><dependency><artifactId>spring-boot-starter-web</artifactId></dependency></dependencies></project>\n"
+POM = (
+    "<project><dependencies><dependency><artifactId>spring-boot-starter-web</artifactId>"
+    "</dependency></dependencies></project>\n"
+)
 CONTROLLER = """package x;
 import org.springframework.web.bind.annotation.*;
 @RestController
@@ -126,7 +129,9 @@ def test_url_rule_with_constant_is_incomplete(tmp_path):
 
 
 def test_method_security_disabled_is_inferred(tmp_path):
-    annotation = '@GetMapping("/a")\n    @org.springframework.security.access.prepost.PreAuthorize("hasRole(\'ADMIN\')")'
+    annotation = (
+        '@GetMapping("/a")\n    @org.springframework.security.access.prepost.PreAuthorize("hasRole(\'ADMIN\')")'
+    )
     entry = extract(app(tmp_path, annotation)).entrypoints[0]
     assert "hasRole('ADMIN')" not in entry.effective_guards
     assert entry.certainty == Certainty.inferred and entry.unresolved_reason == "METHOD_SECURITY_DISABLED"
@@ -250,7 +255,9 @@ def test_multiple_filter_chains_are_incomplete(tmp_path):
     ("@EnableMethodSecurity(prePostEnabled = false)", "@PreAuthorize(\"hasRole('ADMIN')\")", False),
 ])
 def test_method_security_options(tmp_path, switch, annotation, counted):
-    entry = extract(app(tmp_path, f'@GetMapping("/a")\n    {annotation}', extra=f"{switch}\nclass Security {{}}\n")).entrypoints[0]
+    entry = extract(
+        app(tmp_path, f'@GetMapping("/a")\n    {annotation}', extra=f"{switch}\nclass Security {{}}\n")
+    ).entrypoints[0]
     assert bool(entry.effective_guards) == counted
     if not counted:
         assert entry.unresolved_reason == "METHOD_SECURITY_DISABLED"
@@ -258,7 +265,9 @@ def test_method_security_options(tmp_path, switch, annotation, counted):
 
 def test_gradle_security_dependency_without_rules_is_incomplete(tmp_path):
     (tmp_path / "C.java").write_text(CONTROLLER.format(prefix='"/p"', annotation='@GetMapping("/a")'))
-    (tmp_path / "build.gradle").write_text("dependencies { implementation 'org.springframework.boot:spring-boot-starter-security' }\n")
+    (tmp_path / "build.gradle").write_text(
+        "dependencies { implementation 'org.springframework.boot:spring-boot-starter-security' }\n"
+    )
     assert not extract(tmp_path).entrypoints[0].middleware_complete
 
 
@@ -275,6 +284,8 @@ def test_legacy_security_adapter_rules_are_read(tmp_path):
 
 def test_aspect_guard_marks_incomplete(tmp_path):
     app(tmp_path)
-    (tmp_path / "Guard.java").write_text("@Aspect\n@Component\nclass Guard { @Before(\"execution(* x.*(..))\") void check() {} }\n")
+    (tmp_path / "Guard.java").write_text(
+        '@Aspect\n@Component\nclass Guard { @Before("execution(* x.*(..))") void check() {} }\n'
+    )
     entry = extract(tmp_path).entrypoints[0]
     assert not entry.middleware_complete and "Aspect" in entry.unresolved_reason

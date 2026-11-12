@@ -81,7 +81,9 @@ def test_uses_corrected_lines():
 
 
 def test_claim_key_ignores_line_numbers():
-    moved = path().model_copy(update={"hops": [Hop(file="A.java", start=50, end=50, quote="q", role=Role.root_control)]})
+    moved = path().model_copy(
+        update={"hops": [Hop(file="A.java", start=50, end=50, quote="q", role=Role.root_control)]}
+    )
     assert decide("c1", path(), PASS, [KEPT], "h").claim_key == decide("c1", moved, PASS, [KEPT], "h").claim_key
 
 

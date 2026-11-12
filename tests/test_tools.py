@@ -18,7 +18,9 @@ from taki.tools.readonly import ReadOnlyTools
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 VULN = FIX / "vulnerable"
 CONTROLLER = "src/main/java/demo/member/MemberController.java"
-CASE = Case(case_id="c1", source=CaseSource.rule, subject_id="R1", question="q", slice_id="s", budget=Budget(max_tool_calls=8))
+CASE = Case(
+    case_id="c1", source=CaseSource.rule, subject_id="R1", question="q", slice_id="s", budget=Budget(max_tool_calls=8)
+)
 
 
 @pytest.fixture(scope="module")
@@ -164,7 +166,9 @@ def test_review_can_read_upper_guard(fake, gw, tools):
 
 def test_scan_gives_tools_to_investigator(fake, tmp_path):
     fake.responses.extend(json.loads((FIX / "fake_script.json").read_text(encoding="utf-8")))
-    run_scan(VULN, design=[FIX / "design.md"], out=tmp_path, config=make_config(fake), rules=load_rules(FIX / "rules.yml"))
+    run_scan(
+        VULN, design=[FIX / "design.md"], out=tmp_path, config=make_config(fake), rules=load_rules(FIX / "rules.yml")
+    )
     assert "tools" in fake.requests[0] and "tools" not in fake.requests[-1]  # 수정 제안은 도구를 쓰지 않는다
 
 
@@ -195,7 +199,9 @@ def test_config_secret_is_masked_in_tools_and_slices(tmp_path):
 
     (tmp_path / "application.properties").write_text("spring.datasource.password=tiger123\n")
     snapshot = scan_scope(tmp_path)
-    assert "tiger123" not in ReadOnlyTools(snapshot).call("read_code", {"path": "application.properties", "start": 1, "end": 1})
+    assert "tiger123" not in ReadOnlyTools(snapshot).call(
+        "read_code", {"path": "application.properties", "start": 1, "end": 1}
+    )
     assert "tiger123" not in ReadOnlyTools(snapshot).call("search", {"pattern": "datasource"})
     one = Slice(slice_id="s", name="s", files=[SliceFile(path="application.properties")])
     assert "tiger123" not in render_slice(one, snapshot)

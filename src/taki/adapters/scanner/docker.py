@@ -1,7 +1,11 @@
-"""YAML로 등록한 SAST 도구를 네트워크 없는 컨테이너에서 돌리고 SARIF를 읽는다. 실패는 0건이 아니라 partial이나 failed다."""
+"""YAML로 등록한 SAST 도구를 네트워크 없는 컨테이너에서 돌리고 SARIF를 읽는다.
+
+실패는 0건이 아니라 partial이나 failed다.
+"""
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
@@ -94,7 +98,9 @@ def load_scanner(entry, base: Path) -> ScannerSpec:
 
 def plan_scanners(specs: list[ScannerSpec], snapshot: Snapshot) -> tuple[list[ScannerSpec], list[LedgerCell]]:
     if not specs:
-        return [], [LedgerCell(subject="scanner:*", target="*", state=LedgerState.deferred, reason="등록된 스캐너 없음")]
+        return [], [
+            LedgerCell(subject="scanner:*", target="*", state=LedgerState.deferred, reason="등록된 스캐너 없음")
+        ]
     languages = {f.language for f in snapshot.files}
     runnable, cells = [], []
     for spec in specs:
@@ -129,7 +135,8 @@ def docker_args(spec: ScannerSpec, snapshot: Snapshot, out: Path, name: str) -> 
         args += ["--platform", spec.platform]
     if hasattr(os, "getuid"):  # 이미지 사용자와 상관없이 붙인 폴더에 쓰고, 결과 파일이 root 소유로 남지 않게 한다
         args += ["--user", f"{os.getuid()}:{os.getgid()}"]
-    args += ["--tmpfs", "/tmp", "-e", "HOME=/tmp", "-w", "/src",
+    args += ["--tmpfs", "/tmp", "-e", "HOME=/tmp"]  # noqa: S108 호스트가 아니라 컨테이너 안 경로(tmpfs)다
+    args += ["-w", "/src",
              *_bind(snapshot.root, "/src", readonly=True), *_hidden(snapshot), *_bind(scan_dir, "/out"),
              *_bind(scan_dir / f"{spec.name}-work", "/work")]
     rule_args: list[str] = []
@@ -145,10 +152,10 @@ def docker_args(spec: ScannerSpec, snapshot: Snapshot, out: Path, name: str) -> 
 
 
 def _remove_container(name: str) -> None:
-    try:
-        subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False, timeout=30)
-    except (subprocess.SubprocessError, OSError):
-        pass  # 정리 실패가 시간 초과 보고를 가리지 않게 한다. 남은 컨테이너는 --network none이라 밖으로 못 나간다.
+    # 정리 실패가 시간 초과 보고를 가리지 않게 한다. 남은 컨테이너는 --network none이라 밖으로 못 나간다.
+    with contextlib.suppress(subprocess.SubprocessError, OSError):
+        # 고정 인자 목록, 셸 없음. name은 이 모듈이 만든 컨테이너 이름
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False, timeout=30)  # noqa: S603, S607
 
 
 def run_scanner(spec: ScannerSpec, snapshot: Snapshot, out: Path) -> ScanOutcome:
@@ -159,8 +166,14 @@ def run_scanner(spec: ScannerSpec, snapshot: Snapshot, out: Path) -> ScanOutcome
     sarif.unlink(missing_ok=True)  # 같은 --out을 다시 쓸 때 이전 결과를 읽지 않게 한다
     name = f"taki-{spec.name}-{uuid.uuid4().hex[:8]}"
     try:
-        finished = subprocess.run(docker_args(spec, snapshot, out, name), capture_output=True, text=True,
-                                  timeout=spec.timeout_seconds, check=False)
+        # 인자 목록, 셸 없음. 이미지·명령은 등록한 스캐너 정의에서 오고 검증을 거친다
+        finished = subprocess.run(  # noqa: S603
+            docker_args(spec, snapshot, out, name),
+            capture_output=True,
+            text=True,
+            timeout=spec.timeout_seconds,
+            check=False,
+        )
     except FileNotFoundError:
         return ScanOutcome(Capability.failed, errors=["Docker를 찾지 못해 스캐너를 실행하지 못함"])
     except subprocess.TimeoutExpired:

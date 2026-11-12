@@ -10,7 +10,7 @@ SERVER_NAMES = {
 
 
 def test_public_api_kept():
-    assert SERVER_NAMES <= set(taki.__all__)
+    assert set(taki.__all__) >= SERVER_NAMES
     assert all(hasattr(taki, name) for name in SERVER_NAMES)
 
 

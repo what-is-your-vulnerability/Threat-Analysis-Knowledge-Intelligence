@@ -101,7 +101,7 @@ def _inside(hop: Hop, flow: Flow) -> bool:
     if hop.file in flow.guard_files:
         return True
     spans = [(flow.handler_file, flow.handler_start, flow.handler_end), *((h.file, h.start, h.end) for h in flow.hops)]
-    return any(file == hop.file and start is not None and start <= hop.start and hop.end <= end
+    return any(file == hop.file and start is not None and end is not None and start <= hop.start and hop.end <= end
                for file, start, end in spans)
 
 
@@ -150,8 +150,8 @@ def check_evidence(path: EvidencePath, snapshot: Snapshot, flows: list[Flow]) ->
             fixed.append(hop)
             continue
         located, failure = _locate(hop, source)
-        if failure:
-            failures.append(failure)
+        if failure or located is None:  # _locate는 둘 중 하나만 채운다
+            failures.append(failure or CheckFailure.quote_not_found)
             fixed.append(hop)
             continue
         fixed.append(located)

@@ -42,7 +42,8 @@ def _arr(value) -> list:
 
 def _rule_cwes(rule: dict) -> list[str]:
     props = _obj(rule.get("properties"))
-    texts = [*_arr(props.get("tags")), *(props.get("cwe") if isinstance(props.get("cwe"), list) else [props.get("cwe")])]
+    cwe = props.get("cwe")
+    texts = [*_arr(props.get("tags")), *(cwe if isinstance(cwe, list) else [cwe])]
     found = [normalize_cwe(t) for t in texts if t]
     return list(dict.fromkeys(c for c in found if c))
 
@@ -51,7 +52,7 @@ def _relative(uri: str) -> str:
     return unquote(uri).removeprefix("file://").removeprefix("/src/").removeprefix("./")
 
 
-def _where(location: dict) -> tuple[str, dict]:
+def _where(location: object) -> tuple[str, dict]:
     physical = _obj(_obj(location).get("physicalLocation"))
     return _relative(_obj(physical.get("artifactLocation")).get("uri") or ""), _obj(physical.get("region"))
 
@@ -88,8 +89,11 @@ def parse_sarif(path: Path, tool: str) -> ScanOutcome:
         for invocation in map(_obj, _arr(run.get("invocations"))):
             if invocation.get("executionSuccessful") is False:
                 errors.append("도구가 실패로 끝남")
-            errors += [str(_obj(n.get("message")).get("text") or "")
-                       for n in map(_obj, _arr(invocation.get("toolExecutionNotifications"))) if n.get("level") == "error"]
+            errors += [
+                str(_obj(n.get("message")).get("text") or "")
+                for n in map(_obj, _arr(invocation.get("toolExecutionNotifications")))
+                if n.get("level") == "error"
+            ]
         if not isinstance(run.get("results"), list):
             errors.append("결과 목록이 없음(도구가 결과를 내지 못함)")  # SARIF에서 results가 null이면 실패한 실행이다
         for result in map(_obj, _arr(run.get("results"))):
@@ -111,8 +115,11 @@ def parse_sarif(path: Path, tool: str) -> ScanOutcome:
 
 def coverage_gaps(covered: set[str]) -> list[LedgerCell]:
     """규칙이 없는 범위 밖 유형을 알린다. 탐지 범위 밖이라 경고로 치지 않고 deferred로 남긴다."""
-    cells = [LedgerCell(subject=f"{name} ({cwe})", target="*", state=LedgerState.deferred, reason="이 유형은 검사 규칙 없음")
-             for cwe, name in OUT_OF_SCOPE_CWES.items() if cwe not in covered]
+    cells = [
+        LedgerCell(subject=f"{name} ({cwe})", target="*", state=LedgerState.deferred, reason="이 유형은 검사 규칙 없음")
+        for cwe, name in OUT_OF_SCOPE_CWES.items()
+        if cwe not in covered
+    ]
     cells.append(LedgerCell(subject="의존성 CVE", target="*", state=LedgerState.deferred,
                             reason="이 유형은 검사 규칙 없음(라이브러리 점검은 다음 단계)"))
     return cells

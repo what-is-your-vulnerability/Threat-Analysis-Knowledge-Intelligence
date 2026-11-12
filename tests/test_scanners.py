@@ -76,7 +76,9 @@ def test_bad_scanner_yaml_stops_before_scan(tmp_path):
 
 def test_inline_definition_rules_are_relative_to_base(tmp_path):
     (tmp_path / "r.yml").write_text("rules: []\n")
-    spec = load_scanner({"name": "mine", "image": "i", "command": ["x", "{sarif}", "{rules}"], "rules": ["*.yml"]}, tmp_path)
+    spec = load_scanner(
+        {"name": "mine", "image": "i", "command": ["x", "{sarif}", "{rules}"], "rules": ["*.yml"]}, tmp_path
+    )
     assert spec.rules == [(tmp_path / "r.yml").resolve()]
 
 
@@ -132,7 +134,12 @@ def test_alerts_on_unsupported_extensions_are_kept(tmp_path):
     root.mkdir()
     for name in ("A.java", "a.jsp", "build.gradle", "conf.json"):
         (root / name).write_text("x\n")
-    alerts = [_alert("a.jsp", "CWE-79"), _alert("build.gradle"), _alert("conf.json"), _alert("ground-truth-privateX.jsp")]
+    alerts = [
+        _alert("a.jsp", "CWE-79"),
+        _alert("build.gradle"),
+        _alert("conf.json"),
+        _alert("ground-truth-privateX.jsp"),
+    ]
     kept, cells = keep_snapshot_alerts(alerts, scan_scope(root))
     assert kept == alerts and cells == []
 
@@ -187,7 +194,9 @@ def test_scan_without_scanner_reports_gaps_but_keeps_exit_code(fake, tmp_path):
 def test_scan_uses_scanner_alerts(fake, tmp_path, monkeypatch):
     from conftest import make_config
 
-    alert = Fact(kind="alert", file="app.mjs", line=1, tool="semgrep", detail={"cwe": "CWE-918", "rule": "r", "message": "m"})
+    alert = Fact(
+        kind="alert", file="app.mjs", line=1, tool="semgrep", detail={"cwe": "CWE-918", "rule": "r", "message": "m"}
+    )
     monkeypatch.setattr("taki.core.orchestrator.run_scanner",
                         lambda *a, **k: ScanOutcome(status=Capability.partial, alerts=[alert], errors=["규칙 오류"]))
     fake.responses.append({"match": "lens_id별로", "content": '{"claims": [], "dispositions": []}'})

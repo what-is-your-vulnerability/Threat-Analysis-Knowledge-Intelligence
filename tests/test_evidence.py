@@ -188,7 +188,9 @@ def test_implemented_in_guard_file_passes(snapshot):
 
 def test_flow_without_location_cannot_confirm_implemented(snapshot):
     bare = Flow(flow_id="f", method="DELETE", path="/m", middleware_complete=True)
-    assert CheckFailure.off_flow in check_evidence(implemented(hop("hasRole('ADMIN')", 4, 4)), snapshot, [bare]).failures
+    assert (
+        CheckFailure.off_flow in check_evidence(implemented(hop("hasRole('ADMIN')", 4, 4)), snapshot, [bare]).failures
+    )
     assert CheckFailure.off_flow in check_evidence(implemented(hop("hasRole('ADMIN')", 4, 4)), snapshot, []).failures
 
 

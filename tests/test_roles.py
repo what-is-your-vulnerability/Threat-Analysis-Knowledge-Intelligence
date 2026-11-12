@@ -16,7 +16,9 @@ from taki.schemas.models import (
     Role,
 )
 
-CASE = Case(case_id="c1", source=CaseSource.rule, subject_id="R1", question="회원 삭제는 관리자만 가능한가?", slice_id="s")
+CASE = Case(
+    case_id="c1", source=CaseSource.rule, subject_id="R1", question="회원 삭제는 관리자만 가능한가?", slice_id="s"
+)
 CLAIM = {
     "claim": "absent", "statement": "삭제에 관리자 확인이 없다", "cwe": "CWE-862", "category": 2,
     "hops": [{"file": "A.java", "start": 9, "end": 9, "quote": "void delete()", "role": "root_control"}],

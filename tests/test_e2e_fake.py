@@ -189,11 +189,22 @@ def test_out_of_scope_alert_skips_llm(fake, tmp_path):
 
 def test_sibling_guard_cannot_refute_missing(fake, tmp_path):
     # 재검토가 형제 API(suspend)의 @PreAuthorize를 delete의 기각 근거로 내도 누락이 구현 확인으로 바뀌면 안 된다.
-    sibling = {"claim": "implemented", "statement": "관리자 확인이 있다", "checked_value": "hasRole('ADMIN')",
-               "used_value": "hasRole('ADMIN')", "root_symbol": "MemberController.delete",
-               "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 28, "end": 37,
-                         "quote": "@PreAuthorize(\"hasRole('ADMIN')\")\n    public void suspend(@PathVariable long id) {",
-                         "role": "root_control"}]}
+    sibling = {
+        "claim": "implemented",
+        "statement": "관리자 확인이 있다",
+        "checked_value": "hasRole('ADMIN')",
+        "used_value": "hasRole('ADMIN')",
+        "root_symbol": "MemberController.delete",
+        "hops": [
+            {
+                "file": "src/main/java/demo/member/MemberController.java",
+                "start": 28,
+                "end": 37,
+                "quote": "@PreAuthorize(\"hasRole('ADMIN')\")\n    public void suspend(@PathVariable long id) {",
+                "role": "root_control",
+            }
+        ],
+    }
     fake.responses += [
         {"match": "재검토한다", "content": json.dumps({"result": "refuted", "reason": "있다", "evidence": sibling})},
         *json.loads((FIX / "fake_script.json").read_text(encoding="utf-8"))[2:],
@@ -245,17 +256,30 @@ QUESTION_CLAIM = {"claim": "absent", "statement": "삭제에 관리자 확인이
                   "basis": ["MemberController.suspend의 hasRole"],
                   "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 35, "end": 35,
                             "quote": "public void delete(@PathVariable long id) {", "role": "root_control"}]}
-FIXED_PROOF = {"claim": "implemented", "statement": "관리자 확인이 있다", "category": 2,
-               "root_symbol": "MemberController.delete", "checked_value": "hasRole('ADMIN')",
-               "used_value": "hasRole('ADMIN')",
-               "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 36, "end": 37,
-                         "quote": "@PreAuthorize(\"hasRole('ADMIN')\")\n    public void delete(@PathVariable long id) {",
-                         "role": "root_control"}]}
+FIXED_PROOF = {
+    "claim": "implemented",
+    "statement": "관리자 확인이 있다",
+    "category": 2,
+    "root_symbol": "MemberController.delete",
+    "checked_value": "hasRole('ADMIN')",
+    "used_value": "hasRole('ADMIN')",
+    "hops": [
+        {
+            "file": "src/main/java/demo/member/MemberController.java",
+            "start": 36,
+            "end": 37,
+            "quote": "@PreAuthorize(\"hasRole('ADMIN')\")\n    public void delete(@PathVariable long id) {",
+            "role": "root_control",
+        }
+    ],
+}
 
 
 def test_question_issue_fixed_is_resolved_on_recheck(fake, tmp_path):
-    fake.responses += [{"match": "재검토한다", "content": '{"result": "kept"}'},
-                       {"match": "수정 방법을 제안한다", "content": '{"location": "l", "code_example": "c", "check_scenario": "s"}'}]
+    fake.responses += [
+        {"match": "재검토한다", "content": '{"result": "kept"}'},
+        {"match": "수정 방법을 제안한다", "content": '{"location": "l", "code_example": "c", "check_scenario": "s"}'},
+    ]
     fake.responses.append({"match": "lens_id별로", "content": json.dumps({"claims": [QUESTION_CLAIM]})})
     before = run_scan(VULN, design=[], out=tmp_path / "a", config=make_config(fake), slices_file=SLICES)
     assert before.findings[0].state == VerdictState.missing_suspected
@@ -303,4 +327,6 @@ def test_scan_shows_alerts_to_rule_investigation(scripted, tmp_path):
     rule_requests = [q for q in requests if "대상 API" in q]
     assert rule_requests and all("=== 정적분석 경고" in q and "SQL 조립 경고 원문" in q for q in rule_requests)
     review_requests = [q for q in requests if "재검토한다" in q]
-    assert review_requests and not any("SQL 조립 경고 원문" in q for q in review_requests)  # 재검토는 경고를 보지 않는다
+    assert review_requests and not any(
+        "SQL 조립 경고 원문" in q for q in review_requests
+    )  # 재검토는 경고를 보지 않는다

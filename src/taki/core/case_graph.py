@@ -75,11 +75,14 @@ def _flows_for(case: Case, slice_: Slice, claim: EvidencePath) -> list[Flow]:
 def _quote_feedback(claims: list[EvidencePath], checks: list[EvidenceCheck]) -> str:
     wrong = [
         f"{hop.file}:{hop.start} {sorted(f.value for f in QUOTE_FAILURES & set(check.failures))}"
-        for claim, check in zip(claims, checks)
+        for claim, check in zip(claims, checks, strict=True)
         if QUOTE_FAILURES & set(check.failures)
         for hop in claim.hops
     ]
-    return "이전 응답의 인용을 코드에서 찾지 못했다. 코드 문장을 그대로 복사하고 줄 번호를 맞춰 다시 내라:\n" + "\n".join(wrong)
+    return (
+        "이전 응답의 인용을 코드에서 찾지 못했다. 코드 문장을 그대로 복사하고 줄 번호를 맞춰 다시 내라:\n"
+        + "\n".join(wrong)
+    )
 
 
 def _review_claim(claim, check, state: CaseState, flows) -> Review:
@@ -120,7 +123,10 @@ def _fail(state: CaseState) -> dict:
     case, error = state["case"], state["error"]
     ledger: list[LedgerCell] = []
     update_ledger(ledger, case, None, error=error, lenses=state["runtime"].lenses)
-    return {"ledger": ledger, "verdicts": [decide(case.case_id, None, None, [], state["slice_"].code_hash, error=error)]}
+    return {
+        "ledger": ledger,
+        "verdicts": [decide(case.case_id, None, None, [], state["slice_"].code_hash, error=error)],
+    }
 
 
 def _decide(state: CaseState) -> dict:
@@ -152,7 +158,9 @@ def _build():
     graph.add_node("decide", _decide)
     graph.add_edge(START, "investigate")
     graph.add_conditional_edges("investigate", lambda s: "fail" if s["error"] else "check", ["fail", "check"])
-    graph.add_conditional_edges("check", lambda s: "investigate" if s["feedback"] else "decide", ["investigate", "decide"])
+    graph.add_conditional_edges(
+        "check", lambda s: "investigate" if s["feedback"] else "decide", ["investigate", "decide"]
+    )
     graph.add_edge("fail", END)
     graph.add_edge("decide", END)
     return graph.compile()

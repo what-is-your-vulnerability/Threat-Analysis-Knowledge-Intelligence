@@ -115,7 +115,9 @@ def _totals(run_dir: Path) -> dict:
     }
 
 
-def run_condition(condition, target, out, *, config, conditions, repeat, slices_file=None, rules_file=None, design=()) -> dict:
+def run_condition(
+    condition, target, out, *, config, conditions, repeat, slices_file=None, rules_file=None, design=()
+) -> dict:
     """한 회차를 돌려 r<N>.sarif와 r<N>.run.json을 쓴다. 호출이 없었으면 SARIF를 쓰지 않아 0건으로 채점되지 않는다."""
     root = open_target(Path(target), Path(out) / "_target")
     out = Path(out)

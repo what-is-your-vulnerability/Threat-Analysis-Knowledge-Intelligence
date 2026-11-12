@@ -166,8 +166,13 @@ def test_in_scope_alert_inside_slice_is_not_passed_through():
 
 def test_same_line_from_two_tools_is_one_case():
     slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")])]
-    codeql = Fact(kind="alert", file="A.java", line=3, tool="codeql",
-                  detail={"cwe": "CWE-89", "rule": "java/sql-injection", "message": "m2", "flow": ["B.java:5", "A.java:3"]})
+    codeql = Fact(
+        kind="alert",
+        file="A.java",
+        line=3,
+        tool="codeql",
+        detail={"cwe": "CWE-89", "rule": "java/sql-injection", "message": "m2", "flow": ["B.java:5", "A.java:3"]},
+    )
     cases = build_cases(slices, [], Budget(), alerts=[_alert(), codeql])
     assert len(cases) == 1 and "도구 semgrep" in cases[0].question and "도구 codeql" in cases[0].question
     assert "경로 B.java:5 -> A.java:3" in cases[0].question and cases[0].subject_id == "CWE-89"
@@ -176,7 +181,9 @@ def test_same_line_from_two_tools_is_one_case():
 
 def test_failed_merged_alert_case_passes_both_tools_through():
     slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")])]
-    codeql = Fact(kind="alert", file="A.java", line=3, tool="codeql", detail={"cwe": "CWE-89", "rule": "q", "message": "m2"})
+    codeql = Fact(
+        kind="alert", file="A.java", line=3, tool="codeql", detail={"cwe": "CWE-89", "rule": "q", "message": "m2"}
+    )
     case = build_cases(slices, [], Budget(), alerts=[_alert(), codeql])[0]
     assert len(pass_through_alerts([_alert(), codeql], slices, {case.case_id})) == 2
 

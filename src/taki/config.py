@@ -22,7 +22,8 @@ class AgentConfig(BaseModel):
     models: dict[str, str | None] = Field(default_factory=lambda: dict.fromkeys(ROLES))
     budget: Budget = Field(default_factory=Budget)
     reasoning_effort: str | None = None
-    # 도구와 추론 강도를 함께 받지 않는 모델용. 정하면 탐색은 이 값으로 하고, 최종 답은 도구 없이 reasoning_effort로 받는다.
+    # 도구와 추론 강도를 함께 받지 않는 모델용.
+    # 정하면 탐색은 이 값으로 하고, 최종 답은 도구 없이 reasoning_effort로 받는다.
     tool_reasoning_effort: str | None = None
     # 먼저 돌릴 SAST 도구. 이름(src/taki/rules/scanners/<이름>.yml)이나 직접 쓴 정의. 비어 있으면 돌리지 않는다.
     scanners: list[ScannerSpec] = Field(default_factory=list)

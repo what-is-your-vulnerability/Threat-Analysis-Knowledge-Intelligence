@@ -48,7 +48,8 @@ def _print_summary(result: RunResult) -> None:
         print(f"[{f.state.value}] {f.root_file or '-'} {f.root_symbol or ''} {f.cwe or ''}: {f.statement}")
     for item in result.recheck:
         print(f"[recheck] {item.case_id} {item.change}")
-    print(f"리포트: {result.out / 'report.html'} (종료 코드 {result.exit_code})")
+    report = result.out / "report.html" if result.out else "-"
+    print(f"리포트: {report} (종료 코드 {result.exit_code})")
 
 
 def _derive(args) -> int:

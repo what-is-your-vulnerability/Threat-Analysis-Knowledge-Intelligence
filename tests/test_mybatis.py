@@ -7,7 +7,8 @@ from taki.steps.scope import scan_scope
 
 CANONICAL = Path(__file__).resolve().parents[2] / "benchmarks" / "canonical-bss" / "impl" / "java"
 needs_canonical = pytest.mark.skipif(not CANONICAL.exists(), reason="정본 없음")
-MAPPER = """<?xml version="1.0"?>
+MAPPER = (
+    """<?xml version="1.0"?>
 <mapper namespace="a.B">
   <sql id="cols">ID, NAME</sql>
   <select id="list">
@@ -15,9 +16,11 @@ MAPPER = """<?xml version="1.0"?>
     <where><if test="q != null">NAME = #{q,jdbcType=VARCHAR}</if></where>
     ORDER BY ${sort}
   </select>
-  <insert id="add"><selectKey keyProperty="id">SELECT S.NEXTVAL FROM DUAL</selectKey>INSERT INTO MEMBER (ID) VALUES (#{id})</insert>
+  <insert id="add"><selectKey keyProperty="id">SELECT S.NEXTVAL FROM DUAL</selectKey>"""
+    """INSERT INTO MEMBER (ID) VALUES (#{id})</insert>
 </mapper>
 """
+)
 
 
 @pytest.fixture
@@ -53,7 +56,9 @@ def test_broken_xml_is_recorded(tmp_path):
 
 
 def test_missing_include_is_recorded(tmp_path):
-    (tmp_path / "m.xml").write_text('<mapper namespace="x"><select id="a">SELECT <include refid="nope"/></select></mapper>')
+    (tmp_path / "m.xml").write_text(
+        '<mapper namespace="x"><select id="a">SELECT <include refid="nope"/></select></mapper>'
+    )
     assert "nope" in parse_mappers(scan_scope(tmp_path)).errors[0]
 
 

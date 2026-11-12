@@ -120,13 +120,22 @@ def _recheck_cases(previous: Path, slices: list[Slice], budget) -> list[Case]:
         if (not case or case["source"] not in ("question", "alert", "recheck") or not evidence
                 or verdict["state"] not in PROBLEM_STATES or case["slice_id"] not in slice_ids):
             continue
-        claim = (f"이전 검사의 주장: {evidence['statement']} (위치 {evidence.get('root_symbol')}, {evidence.get('cwe')}). "
-                 "지금 코드에서도 맞는지 확인하라. 고쳐졌으면 고친 코드를 implemented 근거로, 남아 있으면 문제 주장으로 낸다.")
+        claim = (
+            f"이전 검사의 주장: {evidence['statement']} (위치 {evidence.get('root_symbol')}, {evidence.get('cwe')}). "
+            "지금 코드에서도 맞는지 확인하라. "
+            "고쳐졌으면 고친 코드를 implemented 근거로, 남아 있으면 문제 주장으로 낸다."
+        )
         if case["case_id"] in cases:
             cases[case["case_id"]].question += "\n" + claim
         else:
-            cases[case["case_id"]] = Case(case_id=case["case_id"], source=CaseSource.recheck, subject_id=case["subject_id"],
-                                          question=claim, slice_id=case["slice_id"], budget=budget)
+            cases[case["case_id"]] = Case(
+                case_id=case["case_id"],
+                source=CaseSource.recheck,
+                subject_id=case["subject_id"],
+                question=claim,
+                slice_id=case["slice_id"],
+                budget=budget,
+            )
     return list(cases.values())
 
 
@@ -233,9 +242,9 @@ def _structure(state: ScanState) -> dict:
         slices = load_slices(Path(state["slices_file"]), snapshot)
         locate_handlers(slices, index)
         return {"runtime": runtime, "alerts": alerts, "ledger": dropped, "slices": slices}
-    slices, cells = _auto_slices(snapshot, design, index, mappers, spring)
-    update = {"runtime": runtime, "alerts": alerts, "ledger": [*dropped, *cells], "slices": slices or []}
-    if slices is None:
+    found, cells = _auto_slices(snapshot, design, index, mappers, spring)
+    update = {"runtime": runtime, "alerts": alerts, "ledger": [*dropped, *cells], "slices": found or []}
+    if found is None:
         return {**update, "exit_code": 3, "error": "Spring 프로젝트인데 컨트롤러를 찾지 못했습니다."}
     return update
 
@@ -253,12 +262,24 @@ def _plan_cases(state: ScanState) -> dict:
                                 reason=f"상한 {settings.max_alert_cases}개를 넘은 경고 항목 {len(capped)}개는 "
                                        "AI 확인 없이 도구 결과로만 실음"))
     if design and not any(r.status == RuleStatus.approved for r in rules):
-        cells.append(LedgerCell(
-            subject="설계문서", target="*", state=LedgerState.not_seen,
-            reason="승인된 보안 규칙이 없어 설계 요구를 직접 대조하지 못함. taki rules derive로 후보를 만들어 승인한다.",
-        ))
-    cells += [LedgerCell(subject=rule.rule_id, target="*", state=LedgerState.not_seen, reason="승인되지 않았거나 맞는 API가 없음")
-              for rule in rules if not any(c.subject_id == rule.rule_id for c in cases)]
+        cells.append(
+            LedgerCell(
+                subject="설계문서",
+                target="*",
+                state=LedgerState.not_seen,
+                reason=(
+                    "승인된 보안 규칙이 없어 설계 요구를 직접 대조하지 못함. "
+                    "taki rules derive로 후보를 만들어 승인한다."
+                ),
+            )
+        )
+    cells += [
+        LedgerCell(
+            subject=rule.rule_id, target="*", state=LedgerState.not_seen, reason="승인되지 않았거나 맞는 API가 없음"
+        )
+        for rule in rules
+        if not any(c.subject_id == rule.rule_id for c in cases)
+    ]
     return {"cases": cases, "capped_cases": capped, "ledger": cells, "next_case": 0}
 
 
@@ -322,10 +343,30 @@ SCAN_GRAPH = _build()
 def run_scan(target, *, design, out, config: AgentConfig, mode: RunMode = RunMode.full, slices_file=None, rules=(),
              previous=None, alerts=()) -> RunResult:
     state: ScanState = {
-        "target": target, "design": list(design), "out": Path(out), "settings": config, "mode": mode,
-        "slices_file": slices_file, "rules": list(rules), "previous": previous, "snapshot": None, "scanners": [],
-        "runtime": None, "slices": [], "cases": [], "capped_cases": [], "next_case": 0, "alerts": [], "findings": [], "exit_code": None,
-        "error": None, "result": None, "raw_alerts": list(alerts), "ledger": [], "verdicts": [], "covered_cwes": [],
+        "target": target,
+        "design": list(design),
+        "out": Path(out),
+        "settings": config,
+        "mode": mode,
+        "slices_file": slices_file,
+        "rules": list(rules),
+        "previous": previous,
+        "snapshot": None,
+        "scanners": [],
+        "runtime": None,
+        "slices": [],
+        "cases": [],
+        "capped_cases": [],
+        "next_case": 0,
+        "alerts": [],
+        "findings": [],
+        "exit_code": None,
+        "error": None,
+        "result": None,
+        "raw_alerts": list(alerts),
+        "ledger": [],
+        "verdicts": [],
+        "covered_cwes": [],
     }
     # 설정으로 켰을 때만 LangSmith로 보낸다. 셸 환경변수만 켜져 있으면 보내지 않는다.
     project = config.langsmith_project

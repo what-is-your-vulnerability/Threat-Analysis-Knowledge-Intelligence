@@ -90,7 +90,7 @@ def _chain(node: Node) -> list[Node]:
            and top.parent.child_by_field_name("object") == top):
         top = top.parent
     calls = []
-    current = top
+    current: Node | None = top
     while current is not None and current.type == "method_invocation":
         calls.append(current)
         current = current.child_by_field_name("object")
@@ -140,7 +140,7 @@ def _block_calls(block: Node) -> list[Node]:
 def _rules_from_chain(calls: list[Node], file: str, names: dict, security: _Security) -> None:
     method: str | None = None
     patterns: list[str] | None = []
-    pending = False
+    pending: bool | None = False
     for call in calls:
         name = _call_name(call)
         if name == "dispatcherTypeMatchers":
@@ -171,7 +171,11 @@ def _rules_from_chain(calls: list[Node], file: str, names: dict, security: _Secu
 
 
 def _created_type(node: Node | None) -> str:
-    return _text(node.child_by_field_name("type")) if node is not None and node.type == "object_creation_expression" else _text(node)
+    return (
+        _text(node.child_by_field_name("type"))
+        if node is not None and node.type == "object_creation_expression"
+        else _text(node)
+    )
 
 
 def _read_filters(index: JavaIndex, security: _Security, capabilities: dict) -> None:
@@ -234,8 +238,9 @@ def _annotation_values(annotation: Annotation, keys: tuple[str, ...]) -> list[No
         if not child.is_named:
             continue
         if child.type == "element_value_pair":
-            if _text(child.child_by_field_name("key")) in keys:
-                values.append(child.child_by_field_name("value"))
+            value = child.child_by_field_name("value")
+            if _text(child.child_by_field_name("key")) in keys and value is not None:
+                values.append(value)
         elif "value" in keys:
             values.append(child)
     flat: list[Node] = []
@@ -315,7 +320,11 @@ def _is_spring(snapshot: Snapshot, index: JavaIndex) -> bool:
 
 BUILD_FILES = {"pom.xml", "build.gradle", "build.gradle.kts"}
 # 스위치마다 옵션이 없을 때 켜지는 애너테이션(Spring Security 기본값).
-METHOD_SECURITY_OPTIONS = {"prePostEnabled": "PreAuthorize", "securedEnabled": "Secured", "jsr250Enabled": "RolesAllowed"}
+METHOD_SECURITY_OPTIONS = {
+    "prePostEnabled": "PreAuthorize",
+    "securedEnabled": "Secured",
+    "jsr250Enabled": "RolesAllowed",
+}
 METHOD_SECURITY_DEFAULTS = {"EnableMethodSecurity": {"PreAuthorize"}, "EnableGlobalMethodSecurity": set()}
 
 
@@ -423,6 +432,16 @@ def _build_entry(snapshot, index, cls, method, annotation, http_method, path, ap
     )
 
 
+def _full_path(context: str, base: str | None, sub: str | None, settings: dict[str, str]) -> tuple[str, str | None]:
+    """클래스·메서드 경로를 합친다. 값을 못 정하면 두 번째 값이 DYNAMIC_PATH다."""
+    if base is None or sub is None:
+        return _join(context, base or "<dynamic>", sub or "<dynamic>"), "DYNAMIC_PATH"
+    resolved = _resolve_placeholders(_join(context, base, sub), settings)
+    if resolved is None:
+        return _join(context, base, sub), "DYNAMIC_PATH"
+    return _join(resolved), None
+
+
 def extract_spring(snapshot: Snapshot, index: JavaIndex) -> SpringResult:
     rules = _rules()
     result = SpringResult()
@@ -449,18 +468,7 @@ def extract_spring(snapshot: Snapshot, index: JavaIndex) -> SpringResult:
                     continue
                 for base in _paths(prefix):
                     for sub in _paths(annotation):
-                        unresolved = None
-                        joined = None
-                        if base is None or sub is None:
-                            unresolved = "DYNAMIC_PATH"
-                            joined = _join(context, base or "<dynamic>", sub or "<dynamic>")
-                        else:
-                            resolved = _resolve_placeholders(_join(context, base, sub), settings)
-                            if resolved is None:
-                                unresolved = "DYNAMIC_PATH"
-                                joined = _join(context, base, sub)
-                            else:
-                                joined = _join(resolved)
+                        joined, unresolved = _full_path(context, base, sub, settings)
                         for http_method in _http_methods(annotation):
                             result.entrypoints.append(_build_entry(snapshot, index, cls, method, annotation,
                                                                    http_method, joined,

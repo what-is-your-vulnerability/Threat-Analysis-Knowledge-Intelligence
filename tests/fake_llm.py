@@ -6,6 +6,7 @@ import argparse
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 
 def _completion(item: dict) -> dict:
@@ -81,7 +82,7 @@ def main() -> None:
     parser.add_argument("script")
     parser.add_argument("--port", type=int, default=0)  # 0이면 비어 있는 포트를 쓴다.
     args = parser.parse_args()
-    with open(args.script, encoding="utf-8") as f, FakeLlm(json.load(f), port=args.port) as fake:
+    with Path(args.script).open(encoding="utf-8") as f, FakeLlm(json.load(f), port=args.port) as fake:
         print(fake.url, flush=True)
         threading.Event().wait()
 

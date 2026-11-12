@@ -18,8 +18,16 @@ ENTRY = "DELETE /api/v1/admin/members/{id}"
 
 
 def _rule(**kw):
-    values = {"title": "회원 삭제 권한", "requirement_quote": QUOTE, "doc_ref": "design.md#회원 관리 API", "stride": ["E"],
-              "category": 2, "cwe": "CWE-862", "standard_ref": "4.1.1", "applies_to": ["DELETE /api/v1/admin/members/*"]}
+    values = {
+        "title": "회원 삭제 권한",
+        "requirement_quote": QUOTE,
+        "doc_ref": "design.md#회원 관리 API",
+        "stride": ["E"],
+        "category": 2,
+        "cwe": "CWE-862",
+        "standard_ref": "4.1.1",
+        "applies_to": ["DELETE /api/v1/admin/members/*"],
+    }
     return {**values, **kw}
 
 
@@ -38,7 +46,9 @@ def test_template_ids_come_from_asvs():
     from taki.llm.roles import load_templates
 
     templates = load_templates()
-    assert {t["category"] for t in templates} <= set(range(1, 9)) and all(t["id"] and t["description"] for t in templates)
+    assert {t["category"] for t in templates} <= set(range(1, 9)) and all(
+        t["id"] and t["description"] for t in templates
+    )
     assert (Path(__file__).parents[1] / "NOTICE").read_text(encoding="utf-8").count("CC BY-SA") >= 1
 
 
@@ -132,7 +142,17 @@ def test_cli_rederive_keeps_approved_rules(fake, tmp_path, monkeypatch):
     config = tmp_path / "c.yml"
     config.write_text(f"base_url: {fake.url}\nmodels: {{onboard: m}}\n")
     out = tmp_path / "rules.yml"
-    derive = ["rules", "derive", str(FIX / "vulnerable"), "--design", str(DESIGN), "--out", str(out), "--config", str(config)]
+    derive = [
+        "rules",
+        "derive",
+        str(FIX / "vulnerable"),
+        "--design",
+        str(DESIGN),
+        "--out",
+        str(out),
+        "--config",
+        str(config),
+    ]
     fake.responses.append(_answer(_rule(), _rule(title="둘째")))
     assert main(derive) == 0 and main(["rules", "approve", str(out), "--id", "R1"]) == 0
     fake.responses.append(_answer(_rule(title="새 후보")))

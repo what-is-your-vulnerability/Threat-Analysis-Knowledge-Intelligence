@@ -1,4 +1,7 @@
-"""tree-sitter로 Java 코드를 읽어 클래스, 메서드, 호출 연결을 찾는다. 범위는 프로젝트 안이고, 밖의 호출은 external로 표시한다."""
+"""tree-sitter로 Java 코드를 읽어 클래스, 메서드, 호출 연결을 찾는다.
+
+범위는 프로젝트 안이고, 밖의 호출은 external로 표시한다.
+"""
 
 from __future__ import annotations
 
@@ -35,7 +38,7 @@ class CallSite:
     receiver: str | None
     arg_count: int | None
     line: int
-    node: Node = field(repr=False, default=None)
+    node: Node = field(repr=False)
 
 
 @dataclass
@@ -53,11 +56,11 @@ class JavaMethod:
     file: str
     start: int
     end: int
-    params: dict[str, str]
+    params: dict[str, str | None]
     return_type: str | None
     annotations: list[Annotation]
-    node: Node = field(repr=False, default=None)
-    owner: JavaClass | None = field(repr=False, default=None)  # 같은 이름 클래스가 여럿이어도 자기 클래스를 가리킨다
+    node: Node = field(repr=False)
+    owner: JavaClass = field(repr=False)  # 같은 이름 클래스가 여럿이어도 자기 클래스를 가리킨다
 
 
 @dataclass
@@ -70,16 +73,16 @@ class JavaClass:
     package: str
     imports: dict[str, str]
     annotations: list[Annotation]
-    fields: dict[str, str] = field(default_factory=dict)
+    node: Node = field(repr=False)
+    fields: dict[str, str | None] = field(default_factory=dict)
     field_nodes: list[Node] = field(repr=False, default_factory=list)
     super_class: str | None = None
     interfaces: list[str] = field(default_factory=list)
     methods: list[JavaMethod] = field(default_factory=list)
-    node: Node = field(repr=False, default=None)
 
 
 def _text(node: Node | None) -> str:
-    return node.text.decode() if node is not None else ""
+    return (node.text or b"").decode() if node is not None else ""
 
 
 def _base_type(node: Node | None) -> str | None:
@@ -156,8 +159,9 @@ class JavaIndex:
             if child.type in ("super_interfaces", "extends_interfaces"):
                 for item in walk(child):
                     if (item.type in ("type_identifier", "scoped_type_identifier")
-                            and item.parent.type not in ("scoped_type_identifier", "type_arguments")):
-                        cls.interfaces.append(_base_type(item))
+                            and item.parent.type not in ("scoped_type_identifier", "type_arguments")
+                            and (interface := _base_type(item)) is not None):
+                        cls.interfaces.append(interface)
         if kind == "record":
             params = node.child_by_field_name("parameters")
             for item in params.children if params is not None else []:
@@ -186,17 +190,26 @@ class JavaIndex:
         return members
 
     def _read_method(self, node: Node, cls: JavaClass) -> JavaMethod:
-        params = {}
+        params: dict[str, str | None] = {}
         parameters = node.child_by_field_name("parameters")
         for item in parameters.children if parameters is not None else []:
             if item.type in ("formal_parameter", "spread_parameter"):
                 name = item.child_by_field_name("name")
                 if name is not None:
                     params[_text(name)] = _base_type(item.child_by_field_name("type"))
-        return JavaMethod(owner=cls, symbol="", class_name=cls.name, name=_text(node.child_by_field_name("name")), file=cls.file,
-                          start=node.start_point[0] + 1, end=node.end_point[0] + 1, params=params,
-                          return_type=_base_type(node.child_by_field_name("type")), annotations=_annotations(node),
-                          node=node)
+        return JavaMethod(
+            owner=cls,
+            symbol="",
+            class_name=cls.name,
+            name=_text(node.child_by_field_name("name")),
+            file=cls.file,
+            start=node.start_point[0] + 1,
+            end=node.end_point[0] + 1,
+            params=params,
+            return_type=_base_type(node.child_by_field_name("type")),
+            annotations=_annotations(node),
+            node=node,
+        )
 
     def _assign_symbols(self) -> None:
         for classes in self.classes.values():
@@ -250,8 +263,8 @@ class JavaIndex:
         return calls
 
     # 타입 추론
-    def _local_types(self, method: JavaMethod) -> dict[str, str | None]:
-        types: dict[str, str | None] = dict(method.params)
+    def _local_types(self, method: JavaMethod) -> dict[str, str | JavaClass | None]:
+        types: dict[str, str | JavaClass | None] = dict(method.params)
         body = method.node.child_by_field_name("body")
         for node in walk(body) if body is not None else []:
             if node.type == "local_variable_declaration":
@@ -271,7 +284,7 @@ class JavaIndex:
                             types[_text(item)] = None
         return types
 
-    def _field_type(self, class_name: str, name: str) -> str | None:
+    def _field_type(self, class_name: str | JavaClass | None, name: str) -> str | None:
         seen = set()
         cls = self.cls(class_name)
         while cls is not None and cls.name not in seen:
@@ -281,7 +294,7 @@ class JavaIndex:
             cls = self.cls(cls.super_class)
         return None
 
-    def _expr_type(self, node: Node | None, method: JavaMethod, types: dict) -> str | None:
+    def _expr_type(self, node: Node | None, method: JavaMethod, types: dict) -> str | JavaClass | None:
         """식의 타입 이름을 돌려준다. 모르면 None이다."""
         if node is None:
             return None
@@ -321,9 +334,9 @@ class JavaIndex:
             return "String"
         return None
 
-    def _find_in_hierarchy(self, class_name: str, name: str, arg_count: int | None) -> list[JavaMethod]:
+    def _find_in_hierarchy(self, class_name: str | JavaClass, name: str, arg_count: int | None) -> list[JavaMethod]:
         seen = set()
-        pending = [class_name]
+        pending: list[str | JavaClass] = [class_name]
         while pending:
             current = pending.pop(0)
             cls = self.cls(current)
@@ -337,9 +350,9 @@ class JavaIndex:
             pending += [p for p in [cls.super_class, *cls.interfaces] if p]
         return []
 
-    def _has_external_parent(self, class_name: str) -> bool:
+    def _has_external_parent(self, class_name: str | JavaClass) -> bool:
         seen = set()
-        pending = [class_name]
+        pending: list[str | JavaClass] = [class_name]
         while pending:
             current = pending.pop(0)
             cls = self.cls(current)
@@ -359,9 +372,9 @@ class JavaIndex:
         annotated = {a.name for a in cls.annotations} & LOMBOK_ACCESSORS
         stripped = re.sub(r"^(get|set|is)", "", name)
         known = {_normalize(f) for f in cls.fields}
-        return bool(annotated) and _normalize(stripped) in known or (annotated and name in ("builder", "build"))
+        return (bool(annotated) and _normalize(stripped) in known) or (bool(annotated) and name in ("builder", "build"))
 
-    def _resolve_in_class(self, owner: str, call: CallSite) -> CallTargets:
+    def _resolve_in_class(self, owner: str | JavaClass, call: CallSite) -> CallTargets:
         found = self._find_in_hierarchy(owner, call.name, call.arg_count)
         cls = self.cls(owner)
         if found:
@@ -377,13 +390,16 @@ class JavaIndex:
                     return CallTargets(implementations, Certainty.code_read)
                 if implementations:
                     return CallTargets(implementations, Certainty.inferred)
-            return CallTargets([m.symbol for m in found], Certainty.code_read if len(found) == 1 else Certainty.inferred)
-        if self._is_generated(cls, call.name) or self._has_external_parent(owner):
+            return CallTargets(
+                [m.symbol for m in found], Certainty.code_read if len(found) == 1 else Certainty.inferred
+            )
+        if (cls is not None and self._is_generated(cls, call.name)) or self._has_external_parent(owner):
             return CallTargets([], Certainty.code_read, external=True)
         return CallTargets([], Certainty.code_read)  # 프로젝트 타입인데 대상을 못 찾았다.
 
     def resolve_call(self, caller_symbol: str, call: CallSite) -> CallTargets:
         method = self._by_method[caller_symbol]
+        receiver_node: Node | None
         if call.node is not None and call.node.type == "method_reference":
             receiver_node = next(c for c in call.node.children if c.is_named)
         else:
@@ -393,7 +409,9 @@ class JavaIndex:
             return self._resolve_in_class(method.owner, call)
         if receiver_node.type == "super":
             parent = method.owner.super_class
-            return self._resolve_in_class(parent, call) if self.cls(parent) else CallTargets([], Certainty.code_read, True)
+            if parent is not None and self.cls(parent):
+                return self._resolve_in_class(parent, call)
+            return CallTargets([], Certainty.code_read, True)
 
         owner = self._expr_type(receiver_node, method, self._local_types(method))
         if owner == "Method" and call.name in REFLECTION_METHODS:

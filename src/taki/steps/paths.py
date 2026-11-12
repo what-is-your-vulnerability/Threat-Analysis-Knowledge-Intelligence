@@ -26,7 +26,7 @@ def finding_paths(result) -> list[dict]:
         # 흐름이 여럿이어도 첫 흐름만 쓴다. 다른 API의 경로를 이어 붙이면 없는 호출을 그리게 된다.
         flow = next((flows[i] for i in finding.flows if i in flows and flows[i].hops), None)
         steps = [_step(h, "flow", flow.handler_symbol if h.role == Role.entrypoint else None, symbols)
-                 for h in (flow.hops if flow else [])]
+                 for h in flow.hops] if flow else []
         for evidence in finding.evidence:
             for hop in evidence.hops:
                 if not _covered(hop, steps):

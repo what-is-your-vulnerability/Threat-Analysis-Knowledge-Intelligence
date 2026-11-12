@@ -23,7 +23,11 @@ def _status(snapshot) -> str:
     if snapshot is None:
         return "failed"
     parts = set(snapshot.capabilities.values())
-    if snapshot.status == Capability.supported and parts & {Capability.partial, Capability.unsupported, Capability.failed}:
+    if snapshot.status == Capability.supported and parts & {
+        Capability.partial,
+        Capability.unsupported,
+        Capability.failed,
+    }:
         return Capability.partial.value  # 일부만 알아본 프로젝트를 "지원"으로 보이지 않게 한다
     return snapshot.status.value
 

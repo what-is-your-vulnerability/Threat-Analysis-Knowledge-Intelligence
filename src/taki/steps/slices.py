@@ -66,8 +66,10 @@ def render_slice(slice_: Slice, snapshot: Snapshot, alerts: Sequence[Fact] = ())
     parts: list[str] = []
     if alerts:
         parts.append("=== 정적분석 경고(도구 결과, 코드로 확인 필요) ===")
-        parts += [f"{a.tool} {a.detail.get('rule')} {a.detail.get('cwe')} {a.file}:{a.line} {a.detail.get('message', '')}"
-                  for a in alerts]
+        parts += [
+            f"{a.tool} {a.detail.get('rule')} {a.detail.get('cwe')} {a.file}:{a.line} {a.detail.get('message', '')}"
+            for a in alerts
+        ]
     if slice_.sibling_table:
         parts.append("=== 이 묶음의 API와 확인된 검사 ===")
         parts += [f"{row['method']} {row['path']} | 검사: {', '.join(row['guards']) or '없음'}"
@@ -143,7 +145,8 @@ def _line_of(snapshot: Snapshot, path: str, line: int) -> str:
 
 
 def _method_hop(snapshot, method: JavaMethod, role: Role, certainty: Certainty) -> Hop:
-    line = method.node.child_by_field_name("name").start_point[0] + 1
+    name = method.node.child_by_field_name("name")
+    line = name.start_point[0] + 1 if name is not None else method.start
     # end는 메서드 끝이다. 구현 근거가 이 호출 경로 안에 있는지 확인할 때 범위로 쓴다.
     return Hop(file=method.file, start=line, end=method.end, quote=_line_of(snapshot, method.file, line), role=role,
                relation=Relation.calls, certainty=certainty)
@@ -203,10 +206,11 @@ class _FileSet:
         if path not in self.lines:
             return
         self.priority[path] = min(priority, self.priority.get(path, priority))
-        if start is None:
+        ranges = self.ranges.setdefault(path, [])
+        if start is None or end is None:  # 범위 없이 넣으면 파일 전체
             self.ranges[path] = None
-        elif self.ranges.get(path, []) is not None:
-            self.ranges.setdefault(path, []).append((start, end))
+        elif ranges is not None:
+            ranges.append((start, end))
 
     def merged(self, path: str) -> list[tuple[int, int]] | None:
         ranges = self.ranges[path]
@@ -292,7 +296,7 @@ def _normalize_route(path: str) -> str:
 
 
 def _requirement_map(design_docs) -> dict[tuple[str, str], str]:
-    found = {}
+    found: dict[tuple[str, str], str] = {}
     for doc in design_docs:
         section = None
         for line in Path(doc).read_text(encoding="utf-8", errors="replace").splitlines():
@@ -337,7 +341,7 @@ def _related(reaches: list[_Reach], others: list[_Reach], index: JavaIndex, tabl
             notes.append(f"{table}에 쓰는 다른 API: " + ", ".join(writers))
     owners = {m.class_name for r in reaches for m in r.methods}
     for fact in index.shared_state():
-        if fact.symbol.split(".")[0] in owners:
+        if (fact.symbol or "").split(".")[0] in owners:
             notes.append(f"공유 상태({fact.kind}): {fact.symbol} @ {fact.file}:{fact.line}")
     seen_fields = set()
     for owner in sorted(owners):
@@ -403,9 +407,14 @@ def _make_slice(name, reaches, table, requirements, snapshot, index, others, max
         for r in reaches
     ]
     slice_ = Slice(
-        slice_id=name, name=name, flows=flows, files=[SliceFile(path=p, ranges=files.merged(p)) for p in sorted(files.ranges)],
-        sibling_table=table, requirement_refs=sorted({row["requirement"] for row in table if "requirement" in row}),
-        related=_related(reaches, others, index, table), truncated=truncated,
+        slice_id=name,
+        name=name,
+        flows=flows,
+        files=[SliceFile(path=p, ranges=files.merged(p)) for p in sorted(files.ranges)],
+        sibling_table=table,
+        requirement_refs=sorted({row["requirement"] for row in table if "requirement" in row}),
+        related=_related(reaches, others, index, table),
+        truncated=truncated,
         capability=Capability.partial if truncated else Capability.supported,
     )
     slice_.code_hash = hashlib.sha256(render_slice(slice_, snapshot).encode()).hexdigest()
@@ -446,7 +455,9 @@ def _apply_overrides(slices: list[Slice], path: Path, snapshot: Snapshot) -> Non
             slice_.code_hash = hashlib.sha256(render_slice(slice_, snapshot).encode()).hexdigest()
 
 
-def build_slices(snapshot, entrypoints, index, mappers, *, design_docs=(), max_lines=1500, overrides=None) -> list[Slice]:
+def build_slices(
+    snapshot, entrypoints, index, mappers, *, design_docs=(), max_lines=1500, overrides=None
+) -> list[Slice]:
     requirements = _requirement_map(design_docs)
     reaches = [_follow_calls(e, snapshot, index, mappers) for e in entrypoints]
     groups: dict[str, list[_Reach]] = {}

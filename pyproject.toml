@@ -70,7 +70,8 @@ extend-select = [
   "RUF",      # Ruff 자체 규칙
 ]
 # PT018: assert 하나에 조건 여러 개를 쓰지 말라는 스타일 규칙. 기존 시험 211곳에 걸리고 버그를 잡지 않는다.
-ignore = ["PT018"]
+# N818: 예외 이름(SecretLeft 등)이 공개 API라 바꾸지 않는다.
+ignore = ["PT018", "N818"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 15

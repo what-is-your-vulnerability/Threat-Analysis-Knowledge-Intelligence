@@ -33,7 +33,11 @@ def target(tmp_path):
 
 def test_lenses_has_11_questions_in_8_categories():
     lenses = load_lenses()
-    assert len(lenses) == 11 and len({x.lens_id for x in lenses}) == 11 and {x.category for x in lenses} == set(range(1, 9))
+    assert (
+        len(lenses) == 11
+        and len({x.lens_id for x in lenses}) == 11
+        and {x.category for x in lenses} == set(range(1, 9))
+    )
 
 
 def test_one_question_case_per_slice():
@@ -175,7 +179,9 @@ def test_condition_e_applies_evidence_and_review(fake, target, tmp_path):
         {"match": "조사 항목 하나를", "content": json.dumps({"claims": [ABSENT, INVENTED]})},
     ]
     slices = target / "s.yml"
-    slices.write_text("- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a, middleware_complete: true}]\n")
+    slices.write_text(
+        "- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a, middleware_complete: true}]\n"
+    )
     record = run_condition("E", target, tmp_path / "o", config=make_config(fake), conditions=CONDITIONS, repeat=1,
                            slices_file=slices, rules_file=_rules_file(target), design=[])
     results = json.loads((tmp_path / "o" / "r1.sarif").read_text())["runs"][0]["results"]
@@ -185,7 +191,9 @@ def test_condition_e_applies_evidence_and_review(fake, target, tmp_path):
 
 def test_condition_e_failure_is_not_zero_findings(fake, target, tmp_path):
     slices = target / "s.yml"
-    slices.write_text("- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a, middleware_complete: true}]\n")
+    slices.write_text(
+        "- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a, middleware_complete: true}]\n"
+    )
     record = run_condition("E", target, tmp_path / "o", config=make_config(fake), conditions=CONDITIONS, repeat=1,
                            slices_file=slices, rules_file=_rules_file(target), design=[])
     assert record["status"] == "failed" and not (tmp_path / "o" / "r1.sarif").exists()

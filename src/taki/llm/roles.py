@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from fnmatch import fnmatchcase
 from pathlib import Path
+from typing import cast
 
 import yaml
 from pydantic import BaseModel, Field
@@ -106,16 +107,16 @@ def investigate(
     if feedback:
         blocks.append(feedback)
     if tools is not None:
-        return run_tool_loop(
+        return cast(InvestigateResult, run_tool_loop(
             "investigate", _messages("investigate_v1", *blocks), prompt_version="investigate_v1",
             schema=InvestigateResult, tools=tools, gateway=gateway, budget=case.budget, case_id=case.case_id,
             sent_files=sent_files,
-        )
+        ))
     response = gateway.complete(
         "investigate", _messages("investigate_v1", *blocks), prompt_version="investigate_v1",
         schema=InvestigateResult, budget=case.budget, case_id=case.case_id, sent_files=sent_files,
     )
-    return response.parsed
+    return cast(InvestigateResult, response.parsed)
 
 
 def review(
@@ -130,16 +131,16 @@ def review(
 ) -> Review:
     blocks = [f"관점: {view}", wrap_data("CLAIM", _claim_for_reader(evidence)), wrap_data("CODE", slice_text)]
     if tools is not None:
-        out = run_tool_loop(
+        out = cast(_ReviewOutput, run_tool_loop(
             "review", _messages("review_v1", *blocks), prompt_version="review_v1", schema=_ReviewOutput, tools=tools,
             gateway=gateway, budget=None, case_id=case_id, sent_files=sent_files,
-        )
+        ))
         return Review(result=out.result, reason=out.reason, evidence=out.evidence)
     response = gateway.complete(
         "review", _messages("review_v1", *blocks), prompt_version="review_v1", schema=_ReviewOutput,
         case_id=case_id, sent_files=sent_files,
     )
-    out = response.parsed
+    out = cast(_ReviewOutput, response.parsed)
     return Review(result=out.result, reason=out.reason, evidence=out.evidence)
 
 
@@ -156,7 +157,7 @@ def propose_fix(
         "fix", _messages("fix_v1", *blocks), prompt_version="fix_v1", schema=FixProposal,
         case_id=case_id, sent_files=sent_files,
     )
-    return response.parsed
+    return cast(FixProposal, response.parsed)
 
 
 def load_templates() -> list[dict]:
@@ -175,7 +176,7 @@ def derive_rules(design_docs, entrypoints: list[str], templates: list[dict], *, 
     blocks.append(wrap_data("TEMPLATES", json.dumps(templates, ensure_ascii=False)))
     response = gateway.complete("onboard", _messages("onboard_v1", *blocks), prompt_version="onboard_v1",
                                 schema=_DeriveOutput, sent_files=list(texts))
-    output = response.parsed
+    output = cast(_DeriveOutput, response.parsed)
 
     derived = DerivedRules()
     derived.threats = [t.model_dump() for t in output.threats]
