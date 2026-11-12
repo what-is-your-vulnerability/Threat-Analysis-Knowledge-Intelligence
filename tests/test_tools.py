@@ -27,8 +27,9 @@ CASE = Case(
 def tools():
     snapshot = scan_scope(VULN)
     index = build_index(snapshot)
-    return ReadOnlyTools(snapshot, index, parse_mappers(snapshot), extract_spring(snapshot, index).entrypoints,
-                         [FIX / "design.md"])
+    return ReadOnlyTools(
+        snapshot, index, parse_mappers(snapshot), extract_spring(snapshot, index).entrypoints, [FIX / "design.md"]
+    )
 
 
 @pytest.fixture
@@ -157,8 +158,10 @@ def test_tool_calls_recorded(fake, gw, tools, tmp_path):
 def test_review_can_read_upper_guard(fake, gw, tools):
     evidence = EvidencePath(claim=Claim.absent, statement="s")
     proof = {"claim": "implemented", "statement": "상위에 있다"}
-    fake.responses += [_tool("read_code", path="src/main/java/demo/config/SecurityConfig.java", start=1, end=20),
-                       _tool("submit_result", result="refuted", reason="r", evidence=proof)]
+    fake.responses += [
+        _tool("read_code", path="src/main/java/demo/config/SecurityConfig.java", start=1, end=20),
+        _tool("submit_result", result="refuted", reason="r", evidence=proof),
+    ]
     out = review(evidence, "code", gateway=gw, tools=tools)
     assert out.result == ReviewResult.refuted and out.evidence.claim == Claim.implemented
     assert "SecurityFilterChain" in fake.requests[1]["messages"][-1]["content"]
@@ -175,9 +178,11 @@ def test_scan_gives_tools_to_investigator(fake, tmp_path):
 def test_tool_reasoning_split_keeps_reasoning_for_final_answer(fake, tmp_path, tools):
     config = make_config(fake, reasoning_effort="medium", tool_reasoning_effort="none")
     gateway = LlmGateway(config, tmp_path)
-    fake.responses += [_tool("read_code", path=CONTROLLER, start=35, end=35),
-                       _tool("submit_result", claims=[]),
-                       {"content": json.dumps({"claims": [{"claim": "absent", "statement": "최종"}]})}]
+    fake.responses += [
+        _tool("read_code", path=CONTROLLER, start=35, end=35),
+        _tool("submit_result", claims=[]),
+        {"content": json.dumps({"claims": [{"claim": "absent", "statement": "최종"}]})},
+    ]
     result = investigate(CASE, "code", gateway=gateway, tools=tools)
     first, second, final = fake.requests
     assert first["reasoning_effort"] == "none" and "tools" in first and second["reasoning_effort"] == "none"

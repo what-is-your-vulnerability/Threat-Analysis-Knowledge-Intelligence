@@ -63,9 +63,11 @@ def test_missing_include_is_recorded(tmp_path):
 
 
 def test_include_cycle_does_not_hang(tmp_path):
-    (tmp_path / "m.xml").write_text('<mapper namespace="x"><sql id="a"><include refid="b"/></sql>'
-                                    '<sql id="b"><include refid="a"/></sql>'
-                                    '<select id="s"><include refid="a"/></select></mapper>')
+    (tmp_path / "m.xml").write_text(
+        '<mapper namespace="x"><sql id="a"><include refid="b"/></sql>'
+        '<sql id="b"><include refid="a"/></sql>'
+        '<select id="s"><include refid="a"/></select></mapper>'
+    )
     assert parse_mappers(scan_scope(tmp_path)).errors
 
 

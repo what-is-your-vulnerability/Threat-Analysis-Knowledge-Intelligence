@@ -84,9 +84,7 @@ def _is_only_comment_or_string(hop: Hop, source: str) -> bool:
     end += len(selected[-1][: last_col + len(last_part)].encode())
 
     ranges = _non_code_ranges(encoded)
-    return all(
-        any(a <= i < b for a, b in ranges) for i in range(start, end) if not chr(encoded[i]).isspace()
-    )
+    return all(any(a <= i < b for a, b in ranges) for i in range(start, end) if not chr(encoded[i]).isspace())
 
 
 def _read(hop_file: str, snapshot: Snapshot, listed: set[str], cache: dict[str, str]) -> str | None:
@@ -101,8 +99,10 @@ def _inside(hop: Hop, flow: Flow) -> bool:
     if hop.file in flow.guard_files:
         return True
     spans = [(flow.handler_file, flow.handler_start, flow.handler_end), *((h.file, h.start, h.end) for h in flow.hops)]
-    return any(file == hop.file and start is not None and end is not None and start <= hop.start and hop.end <= end
-               for file, start, end in spans)
+    return any(
+        file == hop.file and start is not None and end is not None and start <= hop.start and hop.end <= end
+        for file, start, end in spans
+    )
 
 
 def _claim_failures(path: EvidencePath, flows: list[Flow], hops: list[Hop]) -> list[CheckFailure]:
@@ -115,8 +115,10 @@ def _claim_failures(path: EvidencePath, flows: list[Flow], hops: list[Hop]) -> l
             failures.append(CheckFailure.off_flow)
     if path.claim == Claim.implemented:
         quotes = [h.quote for h in path.hops]
-        bound = path.checked_value and path.used_value and all(
-            any(value in q for q in quotes) for value in (path.checked_value, path.used_value)
+        bound = (
+            path.checked_value
+            and path.used_value
+            and all(any(value in q for q in quotes) for value in (path.checked_value, path.used_value))
         )
         if not bound:
             failures.append(CheckFailure.no_binding)

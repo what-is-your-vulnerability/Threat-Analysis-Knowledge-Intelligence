@@ -104,8 +104,9 @@ def _annotations(owner: Node) -> list[Annotation]:
             for item in child.children:
                 if item.type in ANNOTATION_TYPES:
                     name = _text(item.child_by_field_name("name")).rsplit(".", 1)[-1]
-                    found.append(Annotation(name, _text(item), item.start_point[0] + 1,
-                                            item.child_by_field_name("arguments")))
+                    found.append(
+                        Annotation(name, _text(item), item.start_point[0] + 1, item.child_by_field_name("arguments"))
+                    )
     return found
 
 
@@ -149,18 +150,28 @@ class JavaIndex:
 
     def _read_class(self, node: Node, path: str, package: str, imports: dict[str, str]) -> None:
         kind = node.type.removesuffix("_declaration")
-        cls = JavaClass(name=_text(node.child_by_field_name("name")), kind=kind, file=path,
-                        start=node.start_point[0] + 1, end=node.end_point[0] + 1, package=package, imports=imports,
-                        annotations=_annotations(node), node=node)
+        cls = JavaClass(
+            name=_text(node.child_by_field_name("name")),
+            kind=kind,
+            file=path,
+            start=node.start_point[0] + 1,
+            end=node.end_point[0] + 1,
+            package=package,
+            imports=imports,
+            annotations=_annotations(node),
+            node=node,
+        )
         superclass = node.child_by_field_name("superclass")
         if superclass is not None:
             cls.super_class = _base_type(next(c for c in superclass.children if c.type != "extends"))
         for child in node.children:
             if child.type in ("super_interfaces", "extends_interfaces"):
                 for item in walk(child):
-                    if (item.type in ("type_identifier", "scoped_type_identifier")
-                            and item.parent.type not in ("scoped_type_identifier", "type_arguments")
-                            and (interface := _base_type(item)) is not None):
+                    if (
+                        item.type in ("type_identifier", "scoped_type_identifier")
+                        and item.parent.type not in ("scoped_type_identifier", "type_arguments")
+                        and (interface := _base_type(item)) is not None
+                    ):
                         cls.interfaces.append(interface)
         if kind == "record":
             params = node.child_by_field_name("parameters")
@@ -253,8 +264,15 @@ class JavaIndex:
                 receiver = node.child_by_field_name("object")
                 arguments = node.child_by_field_name("arguments")
                 count = sum(c.is_named and c.type != "comment" for c in arguments.children) if arguments else 0
-                calls.append(CallSite(_text(node.child_by_field_name("name")), _text(receiver) if receiver else None,
-                                      count, node.start_point[0] + 1, node))
+                calls.append(
+                    CallSite(
+                        _text(node.child_by_field_name("name")),
+                        _text(receiver) if receiver else None,
+                        count,
+                        node.start_point[0] + 1,
+                        node,
+                    )
+                )
             elif node.type == "method_reference":
                 named = [c for c in node.children if c.is_named]
                 if len(named) >= 2:
@@ -424,8 +442,11 @@ class JavaIndex:
             return CallTargets([], Certainty.code_read, external=True)
 
         # 수신 타입을 모른다(람다 인자 등). 프로젝트에 같은 이름이 있으면 후보로 남기고, 없으면 외부로 본다.
-        candidates = [m for m in self._method_names.get(call.name, [])
-                      if call.arg_count is None or len(m.params) == call.arg_count]
+        candidates = [
+            m
+            for m in self._method_names.get(call.name, [])
+            if call.arg_count is None or len(m.params) == call.arg_count
+        ]
         if candidates:
             return CallTargets([m.symbol for m in candidates], Certainty.inferred)
         return CallTargets([], Certainty.inferred, external=True)
@@ -446,8 +467,10 @@ class JavaIndex:
         facts: dict[tuple[str, int], Fact] = {}
 
         def add(path, line, token, tool):
-            facts.setdefault((path, line), Fact(kind="field_usage", file=path, line=line, symbol=token, tool=tool,
-                                                detail={"name": name}))
+            facts.setdefault(
+                (path, line),
+                Fact(kind="field_usage", file=path, line=line, symbol=token, tool=tool, detail={"name": name}),
+            )
 
         for entry in self.snapshot.files:
             if entry.language == "java":
@@ -467,8 +490,16 @@ class JavaIndex:
         facts = []
 
         def add(kind, cls, symbol, line, detail=None):
-            facts.append(Fact(kind=kind, file=cls.file, line=line, symbol=f"{cls.name}.{symbol}", tool="java_index",
-                              detail=detail or {}))
+            facts.append(
+                Fact(
+                    kind=kind,
+                    file=cls.file,
+                    line=line,
+                    symbol=f"{cls.name}.{symbol}",
+                    tool="java_index",
+                    detail=detail or {},
+                )
+            )
 
         for cls in self.all_classes():
             is_bean = bool({a.name for a in cls.annotations} & BEAN_ANNOTATIONS)

@@ -137,13 +137,28 @@ def test_alert_cases_over_cap_pass_through(fake, tmp_path):
     root = _target(tmp_path, files=("a.mjs", "b.mjs"))
     slices = tmp_path / "slices.yml"
     slices.write_text("- name: s\n  files:\n    - path: a.mjs\n    - path: b.mjs\n")
-    alerts = [Fact(kind="alert", file=f"{n}.mjs", line=1, tool="semgrep",
-                   detail={"cwe": "CWE-89", "rule": "sql", "message": f"{n} 경고 원문"}) for n in ("a", "b")]
+    alerts = [
+        Fact(
+            kind="alert",
+            file=f"{n}.mjs",
+            line=1,
+            tool="semgrep",
+            detail={"cwe": "CWE-89", "rule": "sql", "message": f"{n} 경고 원문"},
+        )
+        for n in ("a", "b")
+    ]
     fake.responses.append(NO_ISSUE)
-    r = run_scan(root, design=[], out=tmp_path / "o", config=make_config(fake, max_alert_cases=1), slices_file=slices,
-                 alerts=alerts)
+    r = run_scan(
+        root,
+        design=[],
+        out=tmp_path / "o",
+        config=make_config(fake, max_alert_cases=1),
+        slices_file=slices,
+        alerts=alerts,
+    )
     assert [c.question.split("\n")[0] for c in r.cases if c.source == CaseSource.alert] == [
-        "스캐너 경고가 실제 문제인지 코드로 확인하라. CWE-89, 파일 a.mjs."]
+        "스캐너 경고가 실제 문제인지 코드로 확인하라. CWE-89, 파일 a.mjs."
+    ]
     asked = [json.dumps(q, ensure_ascii=False) for q in fake.requests]
     asked = [q for q in asked if "스캐너 경고가 실제 문제인지" in q]
     assert asked and not any("파일 b.mjs" in q for q in asked)

@@ -12,8 +12,25 @@ from langsmith import Client
 from taki.schemas.models import Case, Slice
 
 # 단계 기록에 그대로 남겨도 되는 글자 값. 코드·인용·프롬프트가 들어가는 키는 넣지 않는다.
-SAFE_TEXT_KEYS = frozenset({"case_id", "source", "subject", "subject_id", "question", "slice", "flow", "flow_id",
-                            "state", "reason", "claim_key", "error", "mode", "role", "name"})
+SAFE_TEXT_KEYS = frozenset(
+    {
+        "case_id",
+        "source",
+        "subject",
+        "subject_id",
+        "question",
+        "slice",
+        "flow",
+        "flow_id",
+        "state",
+        "reason",
+        "claim_key",
+        "error",
+        "mode",
+        "role",
+        "name",
+    }
+)
 
 
 def is_llm_payload(data: dict) -> bool:

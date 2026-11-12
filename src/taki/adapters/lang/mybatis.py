@@ -132,8 +132,16 @@ def parse_mappers(snapshot: Snapshot) -> MapperIndex:
         sql = _expand(block, namespace, fragments, index.errors, used).strip()
         tables = {t.upper() for t in TABLE_RE.findall(sql)} - NOT_TABLES
         index[(namespace, block.id)] = MapperStatement(
-            namespace=namespace, id=block.id, kind=block.kind, file=path, start=block.start, end=block.end, sql=sql,
-            tables=tables, dollar_params=set(DOLLAR_RE.findall(sql)), hash_params=set(HASH_RE.findall(sql)),
+            namespace=namespace,
+            id=block.id,
+            kind=block.kind,
+            file=path,
+            start=block.start,
+            end=block.end,
+            sql=sql,
+            tables=tables,
+            dollar_params=set(DOLLAR_RE.findall(sql)),
+            hash_params=set(HASH_RE.findall(sql)),
             fragments=used,
         )
     return index

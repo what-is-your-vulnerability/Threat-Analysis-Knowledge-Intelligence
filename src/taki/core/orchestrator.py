@@ -76,8 +76,13 @@ def _add_fixes(findings, cases, slices, snapshot, gateway) -> None:
         case = case_by_id[finding.case_ids[0]]
         slice_ = slice_by_id[case.slice_id]
         try:
-            finding.fix = propose_fix(finding.evidence[0], render_slice(slice_, snapshot), gateway=gateway,
-                                      case_id=case.case_id, sent_files=[f.path for f in slice_.files])
+            finding.fix = propose_fix(
+                finding.evidence[0],
+                render_slice(slice_, snapshot),
+                gateway=gateway,
+                case_id=case.case_id,
+                sent_files=[f.path for f in slice_.files],
+            )
         except LLM_ERRORS:
             finding.fix = None  # 제안이 없어도 판정은 그대로다. 리포트에는 수정 방법이 비어 있게 나온다.
 
@@ -88,8 +93,14 @@ def _auto_slices(snapshot: Snapshot, design, index, mappers, spring) -> tuple[li
     if state == Capability.failed:
         return None, cells
     if state == Capability.unsupported:
-        cells.append(LedgerCell(subject="프레임워크", target="*", state=LedgerState.not_seen,
-                                reason="알아보는 프레임워크가 없어 진입점을 뽑지 못하고 폴더 단위로 나눔"))
+        cells.append(
+            LedgerCell(
+                subject="프레임워크",
+                target="*",
+                state=LedgerState.not_seen,
+                reason="알아보는 프레임워크가 없어 진입점을 뽑지 못하고 폴더 단위로 나눔",
+            )
+        )
         return fallback_slices(snapshot), cells
     return build_slices(snapshot, spring.entrypoints, index, mappers, design_docs=design), cells
 
@@ -104,8 +115,14 @@ def _code_outside_slices(snapshot: Snapshot, slices: list[Slice]) -> list[Ledger
     if not missed:
         return []
     shown = ", ".join(missed[:10]) + (" 외" if len(missed) > 10 else "")
-    return [LedgerCell(subject="묶음 밖 코드", target="*", state=LedgerState.not_seen,
-                       reason=f"어느 기능 묶음에도 들어가지 않아 보지 못한 코드 파일 {len(missed)}개: {shown}")]
+    return [
+        LedgerCell(
+            subject="묶음 밖 코드",
+            target="*",
+            state=LedgerState.not_seen,
+            reason=f"어느 기능 묶음에도 들어가지 않아 보지 못한 코드 파일 {len(missed)}개: {shown}",
+        )
+    ]
 
 
 def _recheck_cases(previous: Path, slices: list[Slice], budget) -> list[Case]:
@@ -117,8 +134,13 @@ def _recheck_cases(previous: Path, slices: list[Slice], budget) -> list[Case]:
     for verdict in report["verdicts"]:
         case = previous_cases.get(verdict["case_id"])
         evidence = verdict.get("evidence")
-        if (not case or case["source"] not in ("question", "alert", "recheck") or not evidence
-                or verdict["state"] not in PROBLEM_STATES or case["slice_id"] not in slice_ids):
+        if (
+            not case
+            or case["source"] not in ("question", "alert", "recheck")
+            or not evidence
+            or verdict["state"] not in PROBLEM_STATES
+            or case["slice_id"] not in slice_ids
+        ):
             continue
         claim = (
             f"이전 검사의 주장: {evidence['statement']} (위치 {evidence.get('root_symbol')}, {evidence.get('cwe')}). "
@@ -147,7 +169,8 @@ def _exit_code(result: RunResult) -> int:
     not_seen = any(c.state == LedgerState.not_seen for c in result.ledger)
     not_fixed = any(i.change != "resolved" for i in result.recheck)
     nothing_checked = not result.verdicts and not any(
-        c.state == LedgerState.checked and not c.subject.startswith("scanner:") for c in result.ledger)
+        c.state == LedgerState.checked and not c.subject.startswith("scanner:") for c in result.ledger
+    )
     return 1 if has_problem or warned or not_seen or not_fixed or nothing_checked else 0
 
 
@@ -207,8 +230,10 @@ def _prepare(state: ScanState) -> dict:
 def _after_prepare(state: ScanState):
     if state["exit_code"] is not None:
         return "report"
-    sends = [Send("scanner", {"spec": spec, "snapshot": state["snapshot"], "out": state["out"]})
-             for spec in state["scanners"]]
+    sends = [
+        Send("scanner", {"spec": spec, "snapshot": state["snapshot"], "out": state["out"]})
+        for spec in state["scanners"]
+    ]
     return sends or "structure"
 
 
@@ -222,8 +247,12 @@ def _scanner(task: dict) -> dict:
         # 재검사는 같은 도구가 정상 실행된 기록이 있어야 도구 결과로만 실린 이슈를 해결로 친다.
         cell = LedgerCell(subject=f"scanner:{spec.name}", target="*", state=LedgerState.checked, reason="실행함")
     else:
-        cell = LedgerCell(subject=f"scanner:{spec.name}", target="*", state=LedgerState.not_seen,
-                          reason="; ".join(outcome.errors) or outcome.status.value)
+        cell = LedgerCell(
+            subject=f"scanner:{spec.name}",
+            target="*",
+            state=LedgerState.not_seen,
+            reason="; ".join(outcome.errors) or outcome.status.value,
+        )
     return {"raw_alerts": outcome.alerts, "ledger": [cell], "covered_cwes": sorted(outcome.covered_cwes)}
 
 
@@ -235,8 +264,9 @@ def _structure(state: ScanState) -> dict:
     spring = extract_spring(snapshot, index)
     snapshot.capabilities |= {f"spring.{k}": v for k, v in spring.capabilities.items()}
     reader = ReadOnlyTools(snapshot, index, mappers, spring.entrypoints, design)
-    runtime = ScanRuntime(gateway=gateway, reader=reader, index=index, mappers=mappers, spring=spring,
-                          lenses=load_lenses())
+    runtime = ScanRuntime(
+        gateway=gateway, reader=reader, index=index, mappers=mappers, spring=spring, lenses=load_lenses()
+    )
     alerts, dropped = keep_snapshot_alerts(state["raw_alerts"], snapshot)
     if state["slices_file"] is not None:
         slices = load_slices(Path(state["slices_file"]), snapshot)
@@ -252,15 +282,21 @@ def _structure(state: ScanState) -> dict:
 def _plan_cases(state: ScanState) -> dict:
     settings, slices, rules, design = state["settings"], state["slices"], list(state["rules"]), state["design"]
     cases = build_cases(slices, rules, settings.budget, lenses=state["runtime"].lenses, alerts=state["alerts"])
-    capped = [c.case_id for c in cases if c.source == CaseSource.alert][settings.max_alert_cases:]
+    capped = [c.case_id for c in cases if c.source == CaseSource.alert][settings.max_alert_cases :]
     cases = [c for c in cases if c.case_id not in capped]
     if state["previous"] is not None:
         cases += _recheck_cases(Path(state["previous"]), slices, settings.budget)
     cells = _code_outside_slices(state["snapshot"], slices)
     if capped:
-        cells.append(LedgerCell(subject="경고 항목 상한", target="*", state=LedgerState.not_seen,
-                                reason=f"상한 {settings.max_alert_cases}개를 넘은 경고 항목 {len(capped)}개는 "
-                                       "AI 확인 없이 도구 결과로만 실음"))
+        cells.append(
+            LedgerCell(
+                subject="경고 항목 상한",
+                target="*",
+                state=LedgerState.not_seen,
+                reason=f"상한 {settings.max_alert_cases}개를 넘은 경고 항목 {len(capped)}개는 "
+                "AI 확인 없이 도구 결과로만 실음",
+            )
+        )
     if design and not any(r.status == RuleStatus.approved for r in rules):
         cells.append(
             LedgerCell(
@@ -309,9 +345,16 @@ def _findings(state: ScanState) -> dict:
 
 def _report(state: ScanState) -> dict:
     out = state["out"]
-    result = RunResult(out=out, mode=state["mode"], snapshot=state["snapshot"], slices=state["slices"],
-                       cases=state["cases"], findings=state["findings"], verdicts=state["verdicts"],
-                       ledger=state["ledger"])
+    result = RunResult(
+        out=out,
+        mode=state["mode"],
+        snapshot=state["snapshot"],
+        slices=state["slices"],
+        cases=state["cases"],
+        findings=state["findings"],
+        verdicts=state["verdicts"],
+        ledger=state["ledger"],
+    )
     _finish(result, out, state["exit_code"], state["error"])
     if state["previous"] is not None and state["exit_code"] is None:
         result.recheck = compare_runs(Path(state["previous"]), out)
@@ -321,15 +364,22 @@ def _report(state: ScanState) -> dict:
 
 def _build():
     graph = StateGraph(ScanState)
-    for name, node in [("prepare", _prepare), ("scanner", _scanner), ("structure", _structure),
-                       ("plan_cases", _plan_cases), ("run_one_case", _run_one_case), ("findings", _findings),
-                       ("report", _report)]:
+    for name, node in [
+        ("prepare", _prepare),
+        ("scanner", _scanner),
+        ("structure", _structure),
+        ("plan_cases", _plan_cases),
+        ("run_one_case", _run_one_case),
+        ("findings", _findings),
+        ("report", _report),
+    ]:
         graph.add_node(name, node)
     graph.add_edge(START, "prepare")
     graph.add_conditional_edges("prepare", _after_prepare, ["scanner", "structure", "report"])
     graph.add_edge("scanner", "structure")
-    graph.add_conditional_edges("structure", lambda s: "report" if s["exit_code"] is not None else "plan_cases",
-                                ["report", "plan_cases"])
+    graph.add_conditional_edges(
+        "structure", lambda s: "report" if s["exit_code"] is not None else "plan_cases", ["report", "plan_cases"]
+    )
     graph.add_conditional_edges("plan_cases", _more_cases, ["run_one_case", "findings"])
     graph.add_conditional_edges("run_one_case", _more_cases, ["run_one_case", "findings"])
     graph.add_edge("findings", "report")
@@ -340,8 +390,18 @@ def _build():
 SCAN_GRAPH = _build()
 
 
-def run_scan(target, *, design, out, config: AgentConfig, mode: RunMode = RunMode.full, slices_file=None, rules=(),
-             previous=None, alerts=()) -> RunResult:
+def run_scan(
+    target,
+    *,
+    design,
+    out,
+    config: AgentConfig,
+    mode: RunMode = RunMode.full,
+    slices_file=None,
+    rules=(),
+    previous=None,
+    alerts=(),
+) -> RunResult:
     state: ScanState = {
         "target": target,
         "design": list(design),
@@ -370,7 +430,11 @@ def run_scan(target, *, design, out, config: AgentConfig, mode: RunMode = RunMod
     }
     # 설정으로 켰을 때만 LangSmith로 보낸다. 셸 환경변수만 켜져 있으면 보내지 않는다.
     project = config.langsmith_project
-    with tracing_context(enabled=bool(project), project_name=project, tags=["taki", mode.value],
-                         client=trace_client() if project else None):
+    with tracing_context(
+        enabled=bool(project),
+        project_name=project,
+        tags=["taki", mode.value],
+        client=trace_client() if project else None,
+    ):
         final = SCAN_GRAPH.invoke(state, {"recursion_limit": RECURSION_LIMIT, "run_name": "taki 검사"})
     return final["result"]

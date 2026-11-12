@@ -44,8 +44,10 @@ def main() -> None:
     parser.add_argument("experiment")
     parser.add_argument("condition")
     args = parser.parse_args()
-    score(ROOT / "eval" / "runs" / args.experiment / args.condition,
-          ROOT / "eval" / "reports" / args.experiment / args.condition)
+    score(
+        ROOT / "eval" / "runs" / args.experiment / args.condition,
+        ROOT / "eval" / "reports" / args.experiment / args.condition,
+    )
 
 
 if __name__ == "__main__":

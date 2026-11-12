@@ -14,8 +14,14 @@ from taki.steps.scope import scan_scope
 from taki.steps.slices import load_slices
 
 CONDITIONS = {"B": {"extensions": [".java", ".html"], "server_exclude": ["frontend/"], "max_input_tokens": 100000}}
-CLAIM = {"claim": "absent", "statement": "s", "cwe": "CWE-862", "category": 2, "root_symbol": "A.b",
-         "hops": [{"file": "A.java", "start": 1, "end": 1, "quote": "class A {}", "role": "root_control"}]}
+CLAIM = {
+    "claim": "absent",
+    "statement": "s",
+    "cwe": "CWE-862",
+    "category": 2,
+    "root_symbol": "A.b",
+    "hops": [{"file": "A.java", "start": 1, "end": 1, "quote": "class A {}", "role": "root_control"}],
+}
 DEV_SLICES = Path(__file__).resolve().parents[1] / "eval" / "slices" / "dev.yml"
 needs_bench = pytest.mark.skipif(not BENCH.exists(), reason="벤치마크 폴더가 없음")
 
@@ -26,8 +32,10 @@ def target(tmp_path):
     (root / "frontend").mkdir(parents=True)
     (root / "A.java").write_text("class A {}\n")
     (root / "frontend" / "b.html").write_text("<div>" + "x" * 300 + "</div>\n")
-    (root / "slices.yml").write_text("- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a}]\n"
-                                     "- name: b\n  files: [{path: A.java}]\n")
+    (root / "slices.yml").write_text(
+        "- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a}]\n"
+        "- name: b\n  files: [{path: A.java}]\n"
+    )
     return root
 
 
@@ -53,8 +61,15 @@ def test_flows_without_guards_have_no_table(target):
 
 def test_condition_c_calls_once_per_slice(fake, target, tmp_path):
     fake.responses += [{"content": json.dumps({"claims": [CLAIM]})}, {"content": '{"claims": []}'}]
-    record = run_condition("C", target, tmp_path / "o", config=make_config(fake), conditions=CONDITIONS, repeat=1,
-                           slices_file=target / "slices.yml")
+    record = run_condition(
+        "C",
+        target,
+        tmp_path / "o",
+        config=make_config(fake),
+        conditions=CONDITIONS,
+        repeat=1,
+        slices_file=target / "slices.yml",
+    )
     assert len(fake.requests) == 2 and record["status"] == "ok" and record["claims"] == 1
     results = json.loads((tmp_path / "o" / "r1.sarif").read_text())["runs"][0]["results"]
     assert results[0]["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == "A.java"
@@ -64,8 +79,15 @@ def test_condition_c_calls_once_per_slice(fake, target, tmp_path):
 
 def test_condition_c_failed_slice_is_not_zero_findings(fake, target, tmp_path):
     fake.responses += [{"content": '{"claims": []}'}]  # 두 번째 묶음은 500
-    record = run_condition("C", target, tmp_path / "o", config=make_config(fake), conditions=CONDITIONS, repeat=1,
-                           slices_file=target / "slices.yml")
+    record = run_condition(
+        "C",
+        target,
+        tmp_path / "o",
+        config=make_config(fake),
+        conditions=CONDITIONS,
+        repeat=1,
+        slices_file=target / "slices.yml",
+    )
     assert record["status"] == "partial" and record["errors"]
 
 
@@ -109,8 +131,9 @@ def test_sarif_shape_is_scored(tmp_path):
     runs = tmp_path / "runs" / "DEV-D0"
     runs.mkdir(parents=True)
     for name in ("r1", "r2"):
-        (runs / f"{name}.sarif").write_text(json.dumps(
-            {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": name}}, "results": []}]}))
+        (runs / f"{name}.sarif").write_text(
+            json.dumps({"version": "2.1.0", "runs": [{"tool": {"driver": {"name": name}}, "results": []}]})
+        )
         (runs / f"{name}.run.json").write_text("{}")
     score(tmp_path / "runs", tmp_path / "out")
     rows = list(csv.DictReader((tmp_path / "out" / "summary.csv").open()))
@@ -143,11 +166,22 @@ RULES_YML = """- rule_id: R1
   applies_to: ["GET /a"]
   status: pending
 """
-ABSENT = {"claim": "absent", "statement": "s", "cwe": "CWE-862", "category": 2, "root_symbol": "A.b",
-          "expected_positions": ["A.b"], "basis": ["x"],
-          "hops": [{"file": "A.java", "start": 1, "end": 1, "quote": "class A {}", "role": "root_control"}]}
-INVENTED = {**ABSENT, "statement": "지어낸 인용", "root_symbol": "A.c",
-            "hops": [{"file": "A.java", "start": 1, "end": 1, "quote": "없는 코드", "role": "root_control"}]}
+ABSENT = {
+    "claim": "absent",
+    "statement": "s",
+    "cwe": "CWE-862",
+    "category": 2,
+    "root_symbol": "A.b",
+    "expected_positions": ["A.b"],
+    "basis": ["x"],
+    "hops": [{"file": "A.java", "start": 1, "end": 1, "quote": "class A {}", "role": "root_control"}],
+}
+INVENTED = {
+    **ABSENT,
+    "statement": "지어낸 인용",
+    "root_symbol": "A.c",
+    "hops": [{"file": "A.java", "start": 1, "end": 1, "quote": "없는 코드", "role": "root_control"}],
+}
 
 
 def _rules_file(target):
@@ -157,12 +191,22 @@ def _rules_file(target):
 
 
 def test_condition_d_uses_rules_from_design_only(fake, target, tmp_path):
-    fake.responses += [{"match": "lens_id별로", "content": '{"claims": []}'},
-                       {"content": json.dumps({"claims": [CLAIM]})}]
+    fake.responses += [
+        {"match": "lens_id별로", "content": '{"claims": []}'},
+        {"content": json.dumps({"claims": [CLAIM]})},
+    ]
     slices = target / "s.yml"
     slices.write_text("- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a}]\n")
-    record = run_condition("D", target, tmp_path / "o", config=make_config(fake), conditions=CONDITIONS, repeat=1,
-                           slices_file=slices, rules_file=_rules_file(target))
+    record = run_condition(
+        "D",
+        target,
+        tmp_path / "o",
+        config=make_config(fake),
+        conditions=CONDITIONS,
+        repeat=1,
+        slices_file=slices,
+        rules_file=_rules_file(target),
+    )
     sent = [json.dumps(r["messages"], ensure_ascii=False) for r in fake.requests]
     assert record["status"] == "ok" and len(sent) == 2 and record["claims"] == 1
     assert any("사용자는 자신이 작성한 리뷰만 수정할 수 있다." in t for t in sent)
@@ -182,8 +226,17 @@ def test_condition_e_applies_evidence_and_review(fake, target, tmp_path):
     slices.write_text(
         "- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a, middleware_complete: true}]\n"
     )
-    record = run_condition("E", target, tmp_path / "o", config=make_config(fake), conditions=CONDITIONS, repeat=1,
-                           slices_file=slices, rules_file=_rules_file(target), design=[])
+    record = run_condition(
+        "E",
+        target,
+        tmp_path / "o",
+        config=make_config(fake),
+        conditions=CONDITIONS,
+        repeat=1,
+        slices_file=slices,
+        rules_file=_rules_file(target),
+        design=[],
+    )
     results = json.loads((tmp_path / "o" / "r1.sarif").read_text())["runs"][0]["results"]
     assert [r["message"]["text"] for r in results] == ["s"] and record["verdicts"]["missing_suspected"] == 1
     assert record["verdicts"]["unverified"] == 1 and record["calls"] >= 3
@@ -194,8 +247,17 @@ def test_condition_e_failure_is_not_zero_findings(fake, target, tmp_path):
     slices.write_text(
         "- name: a\n  files: [{path: A.java}]\n  flows: [{method: GET, path: /a, middleware_complete: true}]\n"
     )
-    record = run_condition("E", target, tmp_path / "o", config=make_config(fake), conditions=CONDITIONS, repeat=1,
-                           slices_file=slices, rules_file=_rules_file(target), design=[])
+    record = run_condition(
+        "E",
+        target,
+        tmp_path / "o",
+        config=make_config(fake),
+        conditions=CONDITIONS,
+        repeat=1,
+        slices_file=slices,
+        rules_file=_rules_file(target),
+        design=[],
+    )
     assert record["status"] == "failed" and not (tmp_path / "o" / "r1.sarif").exists()
 
 

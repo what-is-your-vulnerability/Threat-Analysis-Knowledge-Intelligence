@@ -11,11 +11,20 @@ from taki.schemas.models import Capability, CaseSource, VerdictState
 from taki.steps.paths import finding_paths
 from taki.steps.sarif import to_sarif
 
-STATE_LABELS = {"implemented": "구현 확인", "missing_suspected": "누락 의심", "unverified": "검증 불충분",
-                "not_applicable": "해당 없음"}
+STATE_LABELS = {
+    "implemented": "구현 확인",
+    "missing_suspected": "누락 의심",
+    "unverified": "검증 불충분",
+    "not_applicable": "해당 없음",
+}
 OUTCOME_LABELS = {"pass": "통과", "warn": "경고", "block": "차단"}
-RECHECK_LABELS = {"resolved": "해결 확인", "still": "남아 있음", "new": "새 문제", "unverifiable": "확인 불가",
-                  "unstable": "결과가 흔들림"}
+RECHECK_LABELS = {
+    "resolved": "해결 확인",
+    "still": "남아 있음",
+    "new": "새 문제",
+    "unverifiable": "확인 불가",
+    "unstable": "결과가 흔들림",
+}
 OVERALL = {0: ("통과", "pass"), 1: ("경고", "warn"), 2: ("차단", "block"), 3: ("실행 실패", "block")}
 
 
@@ -51,15 +60,17 @@ def write_report(result, out: Path) -> None:
         "error": result.error,
         # verdicts는 조사 항목별 판정(구현 확인 포함), findings는 묶은 이슈(누락 의심·검증 불충분만)다.
         "summary": {"verdicts": _count(result.verdicts), "findings": _count(result.findings)},
-        "findings":[f.model_dump(mode="json") for f in result.findings],
+        "findings": [f.model_dump(mode="json") for f in result.findings],
         "verdicts": [v.model_dump(mode="json") for v in result.verdicts],
         "cases": [c.model_dump(mode="json") for c in result.cases],
         "ledger": [c.model_dump(mode="json") for c in result.ledger],
         "recheck": [i.model_dump(mode="json") for i in result.recheck],
         "files": [f.path for f in snapshot.files] if snapshot else [],
         "not_read": [n.model_dump(mode="json") for n in snapshot.not_read] if snapshot else [],
-        "slices": [{"name": s.name, "code_hash": s.code_hash, "truncated": s.truncated,
-                    "capability": s.capability.value} for s in result.slices],
+        "slices": [
+            {"name": s.name, "code_hash": s.code_hash, "truncated": s.truncated, "capability": s.capability.value}
+            for s in result.slices
+        ],
         "paths": finding_paths(result),
     }
     (out / "report.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -67,19 +78,27 @@ def write_report(result, out: Path) -> None:
 
     problems = [v.evidence for v in result.verdicts if v.state == VerdictState.missing_suspected and v.evidence]
     (out / "results.sarif").write_text(
-        json.dumps(to_sarif(problems, tool_name="taki"), ensure_ascii=False, indent=1), encoding="utf-8")
+        json.dumps(to_sarif(problems, tool_name="taki"), ensure_ascii=False, indent=1), encoding="utf-8"
+    )
 
     env = Environment(loader=FileSystemLoader(Path(__file__).parent), autoescape=True)
     label, css = OVERALL[result.exit_code]
     html = env.get_template("report.html.j2").render(
         **data,
         overall={"label": label, "css": css},
-        state_labels=STATE_LABELS, outcome_labels=OUTCOME_LABELS, recheck_labels=RECHECK_LABELS,
-        questions={c.case_id: f"고정 질문 · 묶음 {c.slice_id}" if c.source == CaseSource.question else c.question
-                   for c in result.cases},
+        state_labels=STATE_LABELS,
+        outcome_labels=OUTCOME_LABELS,
+        recheck_labels=RECHECK_LABELS,
+        questions={
+            c.case_id: f"고정 질문 · 묶음 {c.slice_id}" if c.source == CaseSource.question else c.question
+            for c in result.cases
+        },
         not_seen=[c for c in data["ledger"] if c["state"] != "checked"],
-        lens_answers=[c for c in data["ledger"]
-                      if c["state"] == "checked" and c["reason"] and not c["subject"].startswith("scanner:")],
+        lens_answers=[
+            c
+            for c in data["ledger"]
+            if c["state"] == "checked" and c["reason"] and not c["subject"].startswith("scanner:")
+        ],
         truncated=[{"name": s.name, "reason": reason} for s in result.slices for reason in s.truncated],
     )
     (out / "report.html").write_text(html, encoding="utf-8")

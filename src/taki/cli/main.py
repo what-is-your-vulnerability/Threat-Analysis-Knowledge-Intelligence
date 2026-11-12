@@ -64,7 +64,8 @@ def _derive(args) -> int:
     approved = [r for r in existing if r.status == RuleStatus.approved]
     _write_rules(args.out, [*approved, *derived])
     args.out.with_suffix(".threats.yml").write_text(
-        yaml.safe_dump(derived.threats, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        yaml.safe_dump(derived.threats, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
     for warning in derived.warnings:
         print(f"경고: {warning}", file=sys.stderr)
     print(f"규칙 후보 {len(derived)}개: {args.out} (승인 전에는 검사에 쓰이지 않음)")
@@ -98,13 +99,24 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "rules":
             return _derive(args) if args.rules_command == "derive" else _approve(args)
         result = run_scan(
-            args.target, design=args.design, out=args.out, config=load_config(args.config),
+            args.target,
+            design=args.design,
+            out=args.out,
+            config=load_config(args.config),
             mode=RunMode.recheck if args.command == "recheck" else RunMode.full,
-            slices_file=args.slices, rules=load_rules(args.rules) if args.rules else [],
+            slices_file=args.slices,
+            rules=load_rules(args.rules) if args.rules else [],
             previous=getattr(args, "previous", None),
         )
-    except (ConfigError, ForbiddenPathError, FileNotFoundError, LlmCallError, LlmFormatError, BudgetExceeded,
-            SecretLeft) as e:
+    except (
+        ConfigError,
+        ForbiddenPathError,
+        FileNotFoundError,
+        LlmCallError,
+        LlmFormatError,
+        BudgetExceeded,
+        SecretLeft,
+    ) as e:
         print(f"실행 실패: {e}", file=sys.stderr)
         return 3
     except Exception as e:  # noqa: BLE001 - 예상 못 한 실패도 CI에서 경고(1)로 읽히지 않게 실행 실패로 끝낸다.

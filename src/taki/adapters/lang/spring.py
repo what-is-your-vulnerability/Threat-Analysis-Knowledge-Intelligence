@@ -86,8 +86,11 @@ def _path_matches(patterns: list[str], path: str) -> bool:
 def _chain(node: Node) -> list[Node]:
     """a.b().c() 호출을 앞에서부터 순서대로 돌려준다."""
     top = node
-    while (top.parent is not None and top.parent.type == "method_invocation"
-           and top.parent.child_by_field_name("object") == top):
+    while (
+        top.parent is not None
+        and top.parent.type == "method_invocation"
+        and top.parent.child_by_field_name("object") == top
+    ):
         top = top.parent
     calls = []
     current: Node | None = top
@@ -163,8 +166,9 @@ def _rules_from_chain(calls: list[Node], file: str, names: dict, security: _Secu
             if pending is True:
                 access = _access_text(call)
                 shown = "anyRequest" if patterns is None else f"{method or ''} {patterns}".strip()
-                security.rules.append(_UrlRule(method, patterns, access, f"{shown}.{access}", file,
-                                               call.start_point[0] + 1))
+                security.rules.append(
+                    _UrlRule(method, patterns, access, f"{shown}.{access}", file, call.start_point[0] + 1)
+                )
             pending = False
         elif name == "and":
             break
@@ -197,8 +201,11 @@ def _read_filters(index: JavaIndex, security: _Security, capabilities: dict) -> 
                 for node in walk(body):
                     if node.type == "method_invocation" and _call_name(node) in FILTER_CALLS:
                         symbol = _created_type(_args(node)[0] if _args(node) else None)
-                        security.filters.append(Guard(order=order, symbol=symbol, file=cls.file,
-                                                      line=node.start_point[0] + 1, scope="global"))
+                        security.filters.append(
+                            Guard(
+                                order=order, symbol=symbol, file=cls.file, line=node.start_point[0] + 1, scope="global"
+                            )
+                        )
                         order += 1
             if method.return_type == "FilterRegistrationBean":
                 security.incomplete = "FilterRegistrationBean의 경로를 풀지 못함"
@@ -225,8 +232,13 @@ def _read_interceptors(body: Node, file: str, security: _Security) -> None:
                 include += [v for v in values if v]
             elif _call_name(call) == "excludePathPatterns":
                 exclude += [v for v in values if v]
-        security.interceptors.append((Guard(order=100, symbol=symbol, file=file, line=node.start_point[0] + 1,
-                                            scope="prefix"), include or ["/**"], exclude))
+        security.interceptors.append(
+            (
+                Guard(order=100, symbol=symbol, file=file, line=node.start_point[0] + 1, scope="prefix"),
+                include or ["/**"],
+                exclude,
+            )
+        )
 
 
 def _annotation_values(annotation: Annotation, keys: tuple[str, ...]) -> list[Node]:
@@ -346,8 +358,11 @@ def _enabled_method_security(index: JavaIndex) -> set[str]:
 def _has_security_dependency(snapshot: Snapshot) -> bool:
     # Gradle 파일은 분석 대상 확장자가 아니라 목록 밖에 있으므로 폴더에서 직접 읽는다.
     skipped = FORBIDDEN_CHILD_NAMES | EXCLUDED_DIRS
-    builds = [p for p in snapshot.root.rglob("*")
-              if p.name in BUILD_FILES and not skipped.intersection(p.relative_to(snapshot.root).parts)]
+    builds = [
+        p
+        for p in snapshot.root.rglob("*")
+        if p.name in BUILD_FILES and not skipped.intersection(p.relative_to(snapshot.root).parts)
+    ]
     return any("spring-boot-starter-security" in p.read_text(encoding="utf-8", errors="replace") for p in builds)
 
 
@@ -425,10 +440,21 @@ def _build_entry(snapshot, index, cls, method, annotation, http_method, path, ap
 
     match_path = PATH_PARAM_RE.sub("{}", path)
     return EntryPoint(
-        id=f"EP:{module}:{http_method}:{match_path}", method=http_method, path_template=path, file=cls.file,
-        line=annotation.line, registration_kind="annotation", handler_symbol=method.symbol, handler_file=cls.file,
-        handler_start=method.start, handler_end=method.end, middleware=sorted(guards, key=lambda g: g.order),
-        effective_guards=effective, middleware_complete=complete, certainty=certainty, unresolved_reason=reason,
+        id=f"EP:{module}:{http_method}:{match_path}",
+        method=http_method,
+        path_template=path,
+        file=cls.file,
+        line=annotation.line,
+        registration_kind="annotation",
+        handler_symbol=method.symbol,
+        handler_file=cls.file,
+        handler_start=method.start,
+        handler_end=method.end,
+        middleware=sorted(guards, key=lambda g: g.order),
+        effective_guards=effective,
+        middleware_complete=complete,
+        certainty=certainty,
+        unresolved_reason=reason,
     )
 
 
@@ -470,10 +496,20 @@ def extract_spring(snapshot: Snapshot, index: JavaIndex) -> SpringResult:
                     for sub in _paths(annotation):
                         joined, unresolved = _full_path(context, base, sub, settings)
                         for http_method in _http_methods(annotation):
-                            result.entrypoints.append(_build_entry(snapshot, index, cls, method, annotation,
-                                                                   http_method, joined,
-                                                                   joined.removeprefix(context) or "/", unresolved,
-                                                                   security))
+                            result.entrypoints.append(
+                                _build_entry(
+                                    snapshot,
+                                    index,
+                                    cls,
+                                    method,
+                                    annotation,
+                                    http_method,
+                                    joined,
+                                    joined.removeprefix(context) or "/",
+                                    unresolved,
+                                    security,
+                                )
+                            )
 
     for entry in result.entrypoints:
         if entry.unresolved_reason == "DYNAMIC_PATH":

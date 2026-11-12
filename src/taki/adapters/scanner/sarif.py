@@ -13,8 +13,14 @@ from taki.schemas.models import Capability, Certainty, Fact, LedgerCell, LedgerS
 CWE_RE = re.compile(r"cwe[-_/]?0*(\d+)", re.IGNORECASE)
 MAX_FLOW_STEPS = 10
 # 탐지 범위 밖 유형. AI가 판정하지 않고, 규칙이 없으면 못 본 범위로 알린다.
-OUT_OF_SCOPE_CWES = {"CWE-918": "SSRF", "CWE-22": "경로 조작", "CWE-611": "XXE", "CWE-502": "역직렬화",
-                     "CWE-352": "CSRF", "CWE-400": "서비스 거부"}
+OUT_OF_SCOPE_CWES = {
+    "CWE-918": "SSRF",
+    "CWE-22": "경로 조작",
+    "CWE-611": "XXE",
+    "CWE-502": "역직렬화",
+    "CWE-352": "CSRF",
+    "CWE-400": "서비스 거부",
+}
 
 
 @dataclass
@@ -26,7 +32,7 @@ class ScanOutcome:
 
 
 def normalize_cwe(text: str) -> str | None:
-    """"external/cwe/cwe-089", "CWE-89: ..." 같은 표기를 "CWE-89"로 맞춘다."""
+    """ "external/cwe/cwe-089", "CWE-89: ..." 같은 표기를 "CWE-89"로 맞춘다."""
     match = CWE_RE.search(str(text))
     return f"CWE-{int(match.group(1))}" if match else None
 
@@ -102,14 +108,26 @@ def parse_sarif(path: Path, tool: str) -> ScanOutcome:
             flow = _flow(result)
             for location in _arr(result.get("locations"))[:1]:
                 file, region = _where(location)
-                detail = {"rule": rule_id, "cwe": cwes[0] if cwes else None,
-                          "message": _obj(result.get("message")).get("text", ""),
-                          "snippet": _obj(region.get("snippet")).get("text", "")}
+                detail = {
+                    "rule": rule_id,
+                    "cwe": cwes[0] if cwes else None,
+                    "message": _obj(result.get("message")).get("text", ""),
+                    "snippet": _obj(region.get("snippet")).get("text", ""),
+                }
                 if flow:
                     detail["flow"] = flow
-                alerts.append(Fact(kind="alert", file=file, line=region.get("startLine"), symbol=rule_id, tool=tool,
-                                   tool_version=driver.get("semanticVersion") or driver.get("version"),
-                                   certainty=Certainty.tool_confirmed, detail=detail))
+                alerts.append(
+                    Fact(
+                        kind="alert",
+                        file=file,
+                        line=region.get("startLine"),
+                        symbol=rule_id,
+                        tool=tool,
+                        tool_version=driver.get("semanticVersion") or driver.get("version"),
+                        certainty=Certainty.tool_confirmed,
+                        detail=detail,
+                    )
+                )
     return ScanOutcome(Capability.partial if errors else Capability.supported, alerts, errors, covered)
 
 
@@ -120,6 +138,12 @@ def coverage_gaps(covered: set[str]) -> list[LedgerCell]:
         for cwe, name in OUT_OF_SCOPE_CWES.items()
         if cwe not in covered
     ]
-    cells.append(LedgerCell(subject="의존성 CVE", target="*", state=LedgerState.deferred,
-                            reason="이 유형은 검사 규칙 없음(라이브러리 점검은 다음 단계)"))
+    cells.append(
+        LedgerCell(
+            subject="의존성 CVE",
+            target="*",
+            state=LedgerState.deferred,
+            reason="이 유형은 검사 규칙 없음(라이브러리 점검은 다음 단계)",
+        )
+    )
     return cells

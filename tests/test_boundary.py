@@ -4,8 +4,20 @@ import taki
 import taki.service
 
 SERVER_NAMES = {
-    "AgentConfig", "BudgetExceeded", "ConfigError", "ForbiddenPathError", "LlmCallError", "LlmFormatError", "RunMode",
-    "RunResult", "SecretLeft", "SecurityRule", "__version__", "check_allowed", "load_config", "run_scan",
+    "AgentConfig",
+    "BudgetExceeded",
+    "ConfigError",
+    "ForbiddenPathError",
+    "LlmCallError",
+    "LlmFormatError",
+    "RunMode",
+    "RunResult",
+    "SecretLeft",
+    "SecurityRule",
+    "__version__",
+    "check_allowed",
+    "load_config",
+    "run_scan",
 }
 
 

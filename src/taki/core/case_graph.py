@@ -40,6 +40,7 @@ QUOTE_FAILURES = {CheckFailure.quote_not_found, CheckFailure.quote_ambiguous}
 @dataclass
 class ScanRuntime:
     """검사 한 번 동안 함께 쓰는 실행 도구. 그래프 상태에 두되 LangSmith 기록에는 타입 이름만 남는다."""
+
     gateway: LlmGateway
     reader: ReadOnlyTools
     index: Any
@@ -89,8 +90,14 @@ def _review_claim(claim, check, state: CaseState, flows) -> Review:
     runtime, case = state["runtime"], state["case"]
     fixed = claim.model_copy(update={"hops": check.fixed_hops})
     try:
-        result = review(fixed, state["review_text"], gateway=runtime.gateway, case_id=case.case_id,
-                        sent_files=state["sent"], tools=runtime.reader)
+        result = review(
+            fixed,
+            state["review_text"],
+            gateway=runtime.gateway,
+            case_id=case.case_id,
+            sent_files=state["sent"],
+            tools=runtime.reader,
+        )
     except LLM_ERRORS as e:
         return Review(result=ReviewResult.not_proven, reason=f"재검토 호출 실패: {e}")
     if result.result == ReviewResult.refuted and result.evidence:
@@ -101,9 +108,15 @@ def _review_claim(claim, check, state: CaseState, flows) -> Review:
 def _investigate(state: CaseState) -> dict:
     runtime = state["runtime"]
     try:
-        result = investigate(state["case"], state["slice_text"], gateway=runtime.gateway,
-                             requirement=state["requirement"], sent_files=state["sent"], tools=runtime.reader,
-                             feedback=state["feedback"])
+        result = investigate(
+            state["case"],
+            state["slice_text"],
+            gateway=runtime.gateway,
+            requirement=state["requirement"],
+            sent_files=state["sent"],
+            tools=runtime.reader,
+            feedback=state["feedback"],
+        )
     except LLM_ERRORS as e:
         return {"error": str(e)}
     return {"result": result}
@@ -169,15 +182,31 @@ def _build():
 CASE_GRAPH = _build()
 
 
-def run_case(case: Case, slice_: Slice, rule: SecurityRule | None, snapshot: Snapshot, runtime: ScanRuntime,
-             alerts: Sequence[Fact] = ()) -> tuple[list[Verdict], list[LedgerCell]]:
+def run_case(
+    case: Case,
+    slice_: Slice,
+    rule: SecurityRule | None,
+    snapshot: Snapshot,
+    runtime: ScanRuntime,
+    alerts: Sequence[Fact] = (),
+) -> tuple[list[Verdict], list[LedgerCell]]:
     review_text = render_slice(slice_, snapshot)
     state: CaseState = {
-        "case": case, "slice_": slice_, "rule": rule, "snapshot": snapshot, "runtime": runtime,
-        "slice_text": render_slice(slice_, snapshot, alerts) if alerts else review_text, "review_text": review_text,
+        "case": case,
+        "slice_": slice_,
+        "rule": rule,
+        "snapshot": snapshot,
+        "runtime": runtime,
+        "slice_text": render_slice(slice_, snapshot, alerts) if alerts else review_text,
+        "review_text": review_text,
         "requirement": f"{rule.doc_ref}: {rule.requirement_quote}" if rule and rule.requirement_quote else None,
-        "sent": [f.path for f in slice_.files], "result": None, "feedback": None, "retried": False, "error": None,
-        "verdicts": [], "ledger": [],
+        "sent": [f.path for f in slice_.files],
+        "result": None,
+        "feedback": None,
+        "retried": False,
+        "error": None,
+        "verdicts": [],
+        "ledger": [],
     }
     final = CASE_GRAPH.invoke(state, {"run_name": f"조사 항목 {case.case_id}"})
     for verdict in final["verdicts"]:

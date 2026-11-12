@@ -50,8 +50,14 @@ def test_admin_slice_contents(canonical):
     snapshot, slices = canonical
     admin = slices["admin"]
     files = {Path(f.path).name for f in admin.files}
-    assert {"MemberAdminController.java", "MemberViewController.java", "MemberAdminService.java", "AccountMapper.xml",
-            "SecurityConfig.java", "SessionAccountFilter.java"} <= files
+    assert {
+        "MemberAdminController.java",
+        "MemberViewController.java",
+        "MemberAdminService.java",
+        "AccountMapper.xml",
+        "SecurityConfig.java",
+        "SessionAccountFilter.java",
+    } <= files
     assert "SignupService.java" not in files and lines_of(admin, snapshot) <= 1500
 
 
@@ -185,8 +191,13 @@ def test_no_framework_falls_back_to_partial(tmp_path):
 
 def test_e2e_without_manual_slices(fake, tmp_path):
     fake.responses.extend(json.loads((FIX / "fake_script.json").read_text(encoding="utf-8")))
-    r = run_scan(FIX / "vulnerable", design=[FIX / "design.md"], out=tmp_path, config=make_config(fake),
-                 rules=load_rules(FIX / "rules.yml"))
+    r = run_scan(
+        FIX / "vulnerable",
+        design=[FIX / "design.md"],
+        out=tmp_path,
+        config=make_config(fake),
+        rules=load_rules(FIX / "rules.yml"),
+    )
     assert r.exit_code == 1 and r.findings[0].state == VerdictState.missing_suspected
     assert r.findings[0].root_file.endswith("MemberController.java") and {c.slice_id for c in r.cases} == {"admin"}
 
@@ -212,8 +223,9 @@ def test_same_class_name_in_two_packages_is_not_mixed(tmp_path):
             f"package {pkg};\npublic class Repo {{ public void remove() {{ int {pkg}Only = 1; }} }}\n"
         )
         (tmp_path / pkg / "MemberController.java").write_text(
-            f'package {pkg};\n@RestController class MemberController {{\n  private Repo repo;\n'
-            f'  @DeleteMapping("/{pkg}/m") void delete() {{ repo.remove(); }}\n}}\n')
+            f"package {pkg};\n@RestController class MemberController {{\n  private Repo repo;\n"
+            f'  @DeleteMapping("/{pkg}/m") void delete() {{ repo.remove(); }}\n}}\n'
+        )
     _, slices = slices_of(tmp_path)
     by_name = {s.name: s for s in slices}
     assert {f.path for f in by_name["a"].files if "MemberController" in f.path} == {"a/MemberController.java"}

@@ -24,17 +24,25 @@ FIX = Path(__file__).parent / "fixtures" / "spring-members"
 
 
 def _rule(**kw):
-    values = {"rule_id": "R1", "title": "삭제는 관리자만", "status": RuleStatus.approved,
-              "applies_to": ["DELETE /api/members/*"]}
+    values = {
+        "rule_id": "R1",
+        "title": "삭제는 관리자만",
+        "status": RuleStatus.approved,
+        "applies_to": ["DELETE /api/members/*"],
+    }
     return SecurityRule(**{**values, **kw})
 
 
 def _slice():
-    return Slice(slice_id="s", name="members", flows=[
-        Flow(flow_id="DELETE /api/members/{id}", method="DELETE", path="/api/members/{id}"),
-        Flow(flow_id="DELETE /api/members/{id}/photo", method="DELETE", path="/api/members/{id}/photo"),
-        Flow(flow_id="GET /api/members", method="GET", path="/api/members"),
-    ])
+    return Slice(
+        slice_id="s",
+        name="members",
+        flows=[
+            Flow(flow_id="DELETE /api/members/{id}", method="DELETE", path="/api/members/{id}"),
+            Flow(flow_id="DELETE /api/members/{id}/photo", method="DELETE", path="/api/members/{id}/photo"),
+            Flow(flow_id="GET /api/members", method="GET", path="/api/members"),
+        ],
+    )
 
 
 def test_rule_case_per_matching_flow():
@@ -99,8 +107,9 @@ def test_render_slice_keeps_line_numbers():
 
 
 def _alert(cwe="CWE-89", file="A.java", line=3, rule="sql-rule"):
-    return Fact(kind="alert", file=file, line=line, tool="semgrep",
-                detail={"cwe": cwe, "rule": rule, "message": "경고 내용"})
+    return Fact(
+        kind="alert", file=file, line=line, tool="semgrep", detail={"cwe": cwe, "rule": rule, "message": "경고 내용"}
+    )
 
 
 def _question_case():
@@ -199,8 +208,10 @@ def test_slice_text_shows_alerts_first():
 
 
 def test_alerts_by_slice_keeps_only_in_scope_alerts_in_that_slice():
-    slices = [Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")]),
-              Slice(slice_id="t", name="t", files=[SliceFile(path="B.java")])]
+    slices = [
+        Slice(slice_id="s", name="s", files=[SliceFile(path="A.java")]),
+        Slice(slice_id="t", name="t", files=[SliceFile(path="B.java")]),
+    ]
     grouped = alerts_by_slice([_alert(), _alert(cwe="CWE-918"), _alert(file="C.java")], slices)
     assert list(grouped) == ["s"] and len(grouped["s"]) == 1
 

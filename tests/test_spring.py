@@ -69,7 +69,11 @@ def test_class_and_method_mapping_joined(tmp_path):
 def test_array_and_request_mapping_method(tmp_path):
     annotation = '@RequestMapping(path = {"/a", "/b"}, method = {RequestMethod.GET, RequestMethod.POST})'
     assert set(by_route(extract(app(tmp_path, annotation)))) == {
-        ("GET", "/p/a"), ("POST", "/p/a"), ("GET", "/p/b"), ("POST", "/p/b")}
+        ("GET", "/p/a"),
+        ("POST", "/p/a"),
+        ("GET", "/p/b"),
+        ("POST", "/p/b"),
+    }
 
 
 def test_context_path_and_placeholder_from_config(tmp_path):
@@ -146,8 +150,10 @@ def test_method_security_enabled_counts(tmp_path):
 
 def test_class_level_method_security_is_inherited(tmp_path):
     (tmp_path / "pom.xml").write_text(POM)
-    (tmp_path / "C.java").write_text('@EnableMethodSecurity @RestController @PreAuthorize("hasRole(\'X\')")\n'
-                                     'class C { @GetMapping("/a") void h() {} }\n')
+    (tmp_path / "C.java").write_text(
+        "@EnableMethodSecurity @RestController @PreAuthorize(\"hasRole('X')\")\n"
+        'class C { @GetMapping("/a") void h() {} }\n'
+    )
     assert extract(tmp_path).entrypoints[0].effective_guards == ["hasRole('X')"]
 
 
@@ -245,15 +251,18 @@ def test_multiple_filter_chains_are_incomplete(tmp_path):
     assert not extract(app(tmp_path, extra=chain)).entrypoints[0].middleware_complete
 
 
-@pytest.mark.parametrize(("switch", "annotation", "counted"), [
-    ("@EnableMethodSecurity", '@Secured("ROLE_ADMIN")', False),
-    ("@EnableMethodSecurity(securedEnabled = true)", '@Secured("ROLE_ADMIN")', True),
-    ("@EnableMethodSecurity", '@RolesAllowed("ADMIN")', False),
-    ("@EnableMethodSecurity(jsr250Enabled = true)", '@RolesAllowed("ADMIN")', True),
-    ("@EnableGlobalMethodSecurity", "@PreAuthorize(\"hasRole('ADMIN')\")", False),
-    ("@EnableGlobalMethodSecurity(prePostEnabled = true)", "@PreAuthorize(\"hasRole('ADMIN')\")", True),
-    ("@EnableMethodSecurity(prePostEnabled = false)", "@PreAuthorize(\"hasRole('ADMIN')\")", False),
-])
+@pytest.mark.parametrize(
+    ("switch", "annotation", "counted"),
+    [
+        ("@EnableMethodSecurity", '@Secured("ROLE_ADMIN")', False),
+        ("@EnableMethodSecurity(securedEnabled = true)", '@Secured("ROLE_ADMIN")', True),
+        ("@EnableMethodSecurity", '@RolesAllowed("ADMIN")', False),
+        ("@EnableMethodSecurity(jsr250Enabled = true)", '@RolesAllowed("ADMIN")', True),
+        ("@EnableGlobalMethodSecurity", "@PreAuthorize(\"hasRole('ADMIN')\")", False),
+        ("@EnableGlobalMethodSecurity(prePostEnabled = true)", "@PreAuthorize(\"hasRole('ADMIN')\")", True),
+        ("@EnableMethodSecurity(prePostEnabled = false)", "@PreAuthorize(\"hasRole('ADMIN')\")", False),
+    ],
+)
 def test_method_security_options(tmp_path, switch, annotation, counted):
     entry = extract(
         app(tmp_path, f'@GetMapping("/a")\n    {annotation}', extra=f"{switch}\nclass Security {{}}\n")

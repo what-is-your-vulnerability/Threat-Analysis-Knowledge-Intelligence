@@ -16,10 +16,26 @@ from taki.steps.slices import load_slices, locate_handlers
 from taki.tools.readonly import ReadOnlyTools
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
-BAD_QUOTE = {"claims": [{"claim": "absent", "statement": "s", "root_symbol": "MemberController.delete", "basis": ["x"],
-                         "expected_positions": ["y"],
-                         "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 1, "end": 1,
-                                   "quote": "없는 문장", "role": "root_control"}]}]}
+BAD_QUOTE = {
+    "claims": [
+        {
+            "claim": "absent",
+            "statement": "s",
+            "root_symbol": "MemberController.delete",
+            "basis": ["x"],
+            "expected_positions": ["y"],
+            "hops": [
+                {
+                    "file": "src/main/java/demo/member/MemberController.java",
+                    "start": 1,
+                    "end": 1,
+                    "quote": "없는 문장",
+                    "role": "root_control",
+                }
+            ],
+        }
+    ]
+}
 
 
 def _setup(fake, tmp_path):
@@ -30,9 +46,14 @@ def _setup(fake, tmp_path):
     slices = load_slices(FIX / "slices.yml", snapshot)
     locate_handlers(slices, index)
     lenses = load_lenses()
-    runtime = ScanRuntime(gateway=LlmGateway(make_config(fake), tmp_path),
-                          reader=ReadOnlyTools(snapshot, index, mappers, spring.entrypoints, []),
-                          index=index, mappers=mappers, spring=spring, lenses=lenses)
+    runtime = ScanRuntime(
+        gateway=LlmGateway(make_config(fake), tmp_path),
+        reader=ReadOnlyTools(snapshot, index, mappers, spring.entrypoints, []),
+        index=index,
+        mappers=mappers,
+        spring=spring,
+        lenses=lenses,
+    )
     cases = build_cases(slices, load_rules(FIX / "rules.yml"), Budget(), lenses=lenses)
     return snapshot, runtime, {s.slice_id: s for s in slices}, cases
 
@@ -62,8 +83,9 @@ def test_llm_error_ends_in_fail_node(fake, tmp_path):
 def test_question_case_without_claims_makes_no_verdict(fake, tmp_path):
     snapshot, runtime, slices, cases = _setup(fake, tmp_path)
     case = _case(cases, CaseSource.question)
-    fake.responses.append({"content": json.dumps({"claims": [], "dispositions": [
-        {"lens_id": "L1", "disposition": "no_issue"}]})})
+    fake.responses.append(
+        {"content": json.dumps({"claims": [], "dispositions": [{"lens_id": "L1", "disposition": "no_issue"}]})}
+    )
     verdicts, ledger = run_case(case, slices[case.slice_id], None, snapshot, runtime)
     assert verdicts == [] and len(ledger) == 11 and ledger[0].state == LedgerState.checked
 
@@ -73,8 +95,13 @@ def test_alerts_reach_investigation_text(fake, tmp_path):
 
     snapshot, runtime, slices, cases = _setup(fake, tmp_path)
     case = _case(cases, CaseSource.rule)
-    alert = Fact(kind="alert", file="src/main/java/demo/member/MemberService.java", line=22, tool="semgrep",
-                 detail={"cwe": "CWE-89", "rule": "sql", "message": "SQL 조립 경고 원문"})
+    alert = Fact(
+        kind="alert",
+        file="src/main/java/demo/member/MemberService.java",
+        line=22,
+        tool="semgrep",
+        detail={"cwe": "CWE-89", "rule": "sql", "message": "SQL 조립 경고 원문"},
+    )
     fake.responses.append({"content": '{"claims": []}'})
     run_case(case, slices[case.slice_id], None, snapshot, runtime, alerts=[alert])
     assert "SQL 조립 경고 원문" in json.dumps(fake.requests[0]["messages"], ensure_ascii=False)

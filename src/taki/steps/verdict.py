@@ -35,7 +35,8 @@ def _from_problem_claim(reviews: list[Review]) -> tuple[VerdictState, str]:
     refuted = [r for r in reviews if r.result == ReviewResult.refuted]
     if refuted:
         proven = [
-            r for r in refuted
+            r
+            for r in refuted
             if r.evidence and r.evidence.claim == Claim.implemented and r.evidence_check and r.evidence_check.passed
         ]
         if proven:
@@ -70,8 +71,16 @@ def decide(
         state, reason = _from_problem_claim(reviews)
 
     claim_key = make_claim_key(root_file(evidence), evidence.root_symbol, evidence.category) if evidence else ""
-    return Verdict(case_id=case_id, claim_key=claim_key, state=state, reason=reason, evidence=evidence, check=check,
-                   reviews=reviews, code_hash=code_hash)
+    return Verdict(
+        case_id=case_id,
+        claim_key=claim_key,
+        state=state,
+        reason=reason,
+        evidence=evidence,
+        check=check,
+        reviews=reviews,
+        code_hash=code_hash,
+    )
 
 
 def policy_outcome(verdict: Verdict, *, tool_confirmed: bool, rule_approved: bool) -> Outcome | None:
@@ -107,11 +116,19 @@ def group_findings(verdicts: list[Verdict], cases: list[Case], tool_confirmed_id
                 file, evidence.root_symbol, f"{case.source.value}:{evidence.category}"
             )
         by_root.setdefault(root, finding_id)
-        finding = findings.setdefault(finding_id, Finding(
-            finding_id=finding_id, state=verdict.state, root_file=file, root_symbol=evidence.root_symbol,
-            broken_rule=None if case.source in NO_RULE_SOURCES else case.subject_id, cwe=evidence.cwe,
-            category=evidence.category, statement=evidence.statement,
-        ))
+        finding = findings.setdefault(
+            finding_id,
+            Finding(
+                finding_id=finding_id,
+                state=verdict.state,
+                root_file=file,
+                root_symbol=evidence.root_symbol,
+                broken_rule=None if case.source in NO_RULE_SOURCES else case.subject_id,
+                cwe=evidence.cwe,
+                category=evidence.category,
+                statement=evidence.statement,
+            ),
+        )
         finding.evidence.append(evidence)
         if case.case_id not in finding.case_ids:
             finding.case_ids.append(case.case_id)
@@ -125,17 +142,25 @@ def group_findings(verdicts: list[Verdict], cases: list[Case], tool_confirmed_id
 
     for finding_id, finding in findings.items():
         finding.tool_confirmed = finding.tool_confirmed or finding_id in tool_confirmed_ids
-        outcomes = [policy_outcome(v, tool_confirmed=finding.tool_confirmed, rule_approved=False)
-                    for v in members[finding_id]]
+        outcomes = [
+            policy_outcome(v, tool_confirmed=finding.tool_confirmed, rule_approved=False) for v in members[finding_id]
+        ]
         finding.outcome = max(outcomes, key=OUTCOME_ORDER.__getitem__)
     # 조사 자체가 실패한 항목도 이슈로 남긴다. 그래야 화면과 API에서 "0건"으로 보이지 않는다.
     for verdict in verdicts:
         if verdict.evidence is None and verdict.state == VerdictState.unverified:
             case = case_by_id[verdict.case_id]
             finding_id = make_finding_id(None, case.case_id, case.subject_id)
-            findings.setdefault(finding_id, Finding(
-                finding_id=finding_id, state=VerdictState.unverified, statement=f"조사하지 못함: {verdict.reason}",
-                broken_rule=None if case.source in NO_RULE_SOURCES else case.subject_id,
-                flows=[case.flow_id] if case.flow_id else [], outcome=Outcome.warn, case_ids=[case.case_id],
-            ))
+            findings.setdefault(
+                finding_id,
+                Finding(
+                    finding_id=finding_id,
+                    state=VerdictState.unverified,
+                    statement=f"조사하지 못함: {verdict.reason}",
+                    broken_rule=None if case.source in NO_RULE_SOURCES else case.subject_id,
+                    flows=[case.flow_id] if case.flow_id else [],
+                    outcome=Outcome.warn,
+                    case_ids=[case.case_id],
+                ),
+            )
     return list(findings.values())

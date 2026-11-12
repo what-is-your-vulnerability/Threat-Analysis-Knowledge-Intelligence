@@ -21,8 +21,13 @@ def scanned(fake, tmp_path):
     """--slices 없이 검사해 Spring 자동 묶음이 호출 경로(hops)를 채우게 한다."""
     fake.responses.extend(json.loads((FIX / "fake_script.json").read_text(encoding="utf-8")))
     out = tmp_path / "run"
-    result = run_scan(FIX / "vulnerable", design=[FIX / "design.md"], out=out, config=make_config(fake),
-                      rules=load_rules(FIX / "rules.yml"))
+    result = run_scan(
+        FIX / "vulnerable",
+        design=[FIX / "design.md"],
+        out=out,
+        config=make_config(fake),
+        rules=load_rules(FIX / "rules.yml"),
+    )
     return result, out
 
 
@@ -55,8 +60,13 @@ def test_method_names_stay_out_of_llm_input(scanned):
 
 
 def _codeql_alert(**detail):
-    return Fact(kind="alert", file="A.java", line=9, tool="codeql",
-                detail={"cwe": "CWE-89", "rule": "java/sql-injection", "message": "m", "snippet": "q(x)", **detail})
+    return Fact(
+        kind="alert",
+        file="A.java",
+        line=9,
+        tool="codeql",
+        detail={"cwe": "CWE-89", "rule": "java/sql-injection", "message": "m", "snippet": "q(x)", **detail},
+    )
 
 
 def test_tool_finding_keeps_alert_flow_in_order():

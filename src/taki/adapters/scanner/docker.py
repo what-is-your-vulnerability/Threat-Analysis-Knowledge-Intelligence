@@ -105,8 +105,14 @@ def plan_scanners(specs: list[ScannerSpec], snapshot: Snapshot) -> tuple[list[Sc
     runnable, cells = [], []
     for spec in specs:
         if spec.languages and not languages & set(spec.languages):
-            cells.append(LedgerCell(subject=f"scanner:{spec.name}", target="*", state=LedgerState.deferred,
-                                    reason=f"대상 언어 파일 없음 ({', '.join(spec.languages)})"))
+            cells.append(
+                LedgerCell(
+                    subject=f"scanner:{spec.name}",
+                    target="*",
+                    state=LedgerState.deferred,
+                    reason=f"대상 언어 파일 없음 ({', '.join(spec.languages)})",
+                )
+            )
         else:
             runnable.append(spec)
     return runnable, cells
@@ -123,22 +129,43 @@ def _bind(src: Path, dst: str, readonly: bool = False) -> list[str]:
 
 def _hidden(snapshot: Snapshot) -> list[str]:
     # 정답·결과 폴더는 컨테이너 안에서 빈 폴더로 가린다. .git 같은 제외 폴더는 도구가 쓸 수 있어 그대로 둔다.
-    return [arg for n in snapshot.not_read if n.reason in ("금지 폴더", "검사 결과 폴더")
-            for arg in ("--mount", f"type=tmpfs,{_field(f'dst=/src/{n.path}')}")]
+    return [
+        arg
+        for n in snapshot.not_read
+        if n.reason in ("금지 폴더", "검사 결과 폴더")
+        for arg in ("--mount", f"type=tmpfs,{_field(f'dst=/src/{n.path}')}")
+    ]
 
 
 def docker_args(spec: ScannerSpec, snapshot: Snapshot, out: Path, name: str) -> list[str]:
     scan_dir = Path(out).resolve() / "scanners"
-    args = ["docker", "run", "--rm", "--name", name, "--network", "none", "--read-only", "--memory", spec.memory,
-            "--pull", spec.pull]
+    args = [
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        name,
+        "--network",
+        "none",
+        "--read-only",
+        "--memory",
+        spec.memory,
+        "--pull",
+        spec.pull,
+    ]
     if spec.platform:
         args += ["--platform", spec.platform]
     if hasattr(os, "getuid"):  # 이미지 사용자와 상관없이 붙인 폴더에 쓰고, 결과 파일이 root 소유로 남지 않게 한다
         args += ["--user", f"{os.getuid()}:{os.getgid()}"]
     args += ["--tmpfs", "/tmp", "-e", "HOME=/tmp"]  # noqa: S108 호스트가 아니라 컨테이너 안 경로(tmpfs)다
-    args += ["-w", "/src",
-             *_bind(snapshot.root, "/src", readonly=True), *_hidden(snapshot), *_bind(scan_dir, "/out"),
-             *_bind(scan_dir / f"{spec.name}-work", "/work")]
+    args += [
+        "-w",
+        "/src",
+        *_bind(snapshot.root, "/src", readonly=True),
+        *_hidden(snapshot),
+        *_bind(scan_dir, "/out"),
+        *_bind(scan_dir / f"{spec.name}-work", "/work"),
+    ]
     rule_args: list[str] = []
     for number, rule in enumerate(spec.rules):
         target = f"/rules/{number}{rule.suffix}"
@@ -196,5 +223,11 @@ def keep_snapshot_alerts(alerts: list[Fact], snapshot: Snapshot) -> tuple[list[F
     dropped = len(alerts) - len(kept)
     if not dropped:
         return kept, []
-    return kept, [LedgerCell(subject="스캐너 경고 제외", target="*", state=LedgerState.deferred,
-                             reason=f"분석 범위 밖 파일의 경고 {dropped}건 제외")]
+    return kept, [
+        LedgerCell(
+            subject="스캐너 경고 제외",
+            target="*",
+            state=LedgerState.deferred,
+            reason=f"분석 범위 밖 파일의 경고 {dropped}건 제외",
+        )
+    ]

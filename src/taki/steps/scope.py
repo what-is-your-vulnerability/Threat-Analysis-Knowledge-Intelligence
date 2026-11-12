@@ -10,9 +10,23 @@ from taki.adapters.repo.local import FORBIDDEN_CHILD_NAMES
 from taki.schemas.models import Capability, FileEntry, NotRead, Snapshot
 
 LANGUAGES = {
-    ".java": "java", ".xml": "xml", ".ts": "typescript", ".tsx": "typescript", ".js": "javascript",
-    ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript", ".c": "c", ".h": "c", ".pc": "proc",
-    ".py": "python", ".html": "html", ".yml": "yaml", ".yaml": "yaml", ".properties": "properties", ".sql": "sql",
+    ".java": "java",
+    ".xml": "xml",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".c": "c",
+    ".h": "c",
+    ".pc": "proc",
+    ".py": "python",
+    ".html": "html",
+    ".yml": "yaml",
+    ".yaml": "yaml",
+    ".properties": "properties",
+    ".sql": "sql",
 }
 EXCLUDED_DIRS = {".git", "node_modules", "target", "build", "dist"}
 

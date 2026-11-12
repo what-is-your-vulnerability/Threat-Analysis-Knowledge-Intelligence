@@ -42,8 +42,13 @@ LLM_ERRORS = (LlmCallError, LlmFormatError, BudgetExceeded, SecretLeft)
 def _ask(case, slice_, snapshot, gateway, record, claims, requirement=None):
     """조사 한 번을 돌려 주장을 모은다. 실패는 0건으로 치지 않고 기록한다."""
     try:
-        result = investigate(case, render_slice(slice_, snapshot), gateway=gateway, requirement=requirement,
-                             sent_files=[f.path for f in slice_.files])
+        result = investigate(
+            case,
+            render_slice(slice_, snapshot),
+            gateway=gateway,
+            requirement=requirement,
+            sent_files=[f.path for f in slice_.files],
+        )
     except LLM_ERRORS as e:
         record["errors"].append(f"{slice_.name}: {type(e).__name__}: {e}")
         return False
@@ -53,11 +58,20 @@ def _ask(case, slice_, snapshot, gateway, record, claims, requirement=None):
 
 
 def _run_b(snapshot, gateway, settings, record, claims) -> bool:
-    budget = Budget(max_input_tokens=settings["max_input_tokens"], max_seconds=settings.get("max_seconds", 180),
-                    max_output_tokens=settings.get("max_output_tokens", 6000))
+    budget = Budget(
+        max_input_tokens=settings["max_input_tokens"],
+        max_seconds=settings.get("max_seconds", 180),
+        max_output_tokens=settings.get("max_output_tokens", 6000),
+    )
     files = [f.path for f in snapshot.files if Path(f.path).suffix in settings["extensions"]]
-    case = Case(case_id=make_case_id(CaseSource.question, QUESTION_SUBJECT, "all"), source=CaseSource.question,
-                subject_id=QUESTION_SUBJECT, question=render_questions(load_lenses()), slice_id="all", budget=budget)
+    case = Case(
+        case_id=make_case_id(CaseSource.question, QUESTION_SUBJECT, "all"),
+        source=CaseSource.question,
+        subject_id=QUESTION_SUBJECT,
+        question=render_questions(load_lenses()),
+        slice_id="all",
+        budget=budget,
+    )
     whole = Slice(slice_id="all", name="all", files=[SliceFile(path=p) for p in files])
     if _ask(case, whole, snapshot, gateway, record, claims):
         return True
@@ -95,8 +109,14 @@ def _run_d(snapshot, gateway, config, slices_file, rules_file, record, claims) -
 
 def _run_e(root, run_dir, config, slices_file, rules_file, design, record, claims) -> bool:
     """전체 구조. 근거 확인과 재검토를 통과해 남은 문제만 결과로 낸다."""
-    result = run_scan(root, design=list(design), out=run_dir, config=config, slices_file=Path(slices_file),
-                      rules=load_rules(Path(rules_file)))
+    result = run_scan(
+        root,
+        design=list(design),
+        out=run_dir,
+        config=config,
+        slices_file=Path(slices_file),
+        rules=load_rules(Path(rules_file)),
+    )
     record["verdicts"] = dict(Counter(v.state.value for v in result.verdicts))
     record["errors"] += [c.reason for c in result.ledger if c.state == LedgerState.not_seen]
     claims.extend(v.evidence for v in result.verdicts if v.state == VerdictState.missing_suspected and v.evidence)
@@ -125,8 +145,15 @@ def run_condition(
     run_dir.mkdir(parents=True, exist_ok=True)
     snapshot = scan_scope(root)
     gateway = LlmGateway(config, run_dir)
-    record: dict = {"condition": condition, "repeat": repeat, "status": "ok", "input": "all", "errors": [],
-                    "dispositions": [], "note": "잠정: 사람 검토 전"}
+    record: dict = {
+        "condition": condition,
+        "repeat": repeat,
+        "status": "ok",
+        "input": "all",
+        "errors": [],
+        "dispositions": [],
+        "note": "잠정: 사람 검토 전",
+    }
     claims: list = []
     if condition == "B":
         called = _run_b(snapshot, gateway, conditions["B"], record, claims)
@@ -167,10 +194,21 @@ def main() -> None:
     out = ROOT / "eval" / "runs" / args.experiment / args.condition / args.variant
     design = args.design or sorted((BENCH / "designs" / "dev").glob("*.md"))
     for n in range(1, args.repeat + 1):
-        record = run_condition(args.condition, target, out, config=config, conditions=conditions, repeat=n,
-                               slices_file=args.slices, rules_file=args.rules, design=design)
-        print(f"{args.condition} {args.variant} r{n}: {record['status']} 주장 {record['claims']} "
-              f"토큰 {record['input_tokens']}+{record['output_tokens']} {record['seconds']}초")
+        record = run_condition(
+            args.condition,
+            target,
+            out,
+            config=config,
+            conditions=conditions,
+            repeat=n,
+            slices_file=args.slices,
+            rules_file=args.rules,
+            design=design,
+        )
+        print(
+            f"{args.condition} {args.variant} r{n}: {record['status']} 주장 {record['claims']} "
+            f"토큰 {record['input_tokens']}+{record['output_tokens']} {record['seconds']}초"
+        )
 
 
 if __name__ == "__main__":

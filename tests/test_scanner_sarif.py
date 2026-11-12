@@ -57,8 +57,11 @@ def test_missing_or_broken_sarif_is_failed(tmp_path):
 
 def test_null_results_sarif_is_not_a_crash(tmp_path):
     rule = {"id": "r", "properties": {"tags": None, "cwe": None}}
-    run = {"tool": {"driver": {"name": "t", "rules": [rule], "extensions": None}}, "invocations": None,
-           "results": [{"ruleId": "r", "locations": None, "codeFlows": None, "message": None}]}
+    run = {
+        "tool": {"driver": {"name": "t", "rules": [rule], "extensions": None}},
+        "invocations": None,
+        "results": [{"ruleId": "r", "locations": None, "codeFlows": None, "message": None}],
+    }
     shapes = {
         "runs-null": ({"runs": None}, Capability.failed),
         "top-array": ([{"runs": []}], Capability.failed),
@@ -75,7 +78,16 @@ def test_null_results_sarif_is_not_a_crash(tmp_path):
 
 
 def test_percent_encoded_uri_is_decoded(tmp_path):
-    result = {"ruleId": "r", "locations": [{"physicalLocation": {"artifactLocation": {"uri": "file:///src/my%20dir/A.java"},
-                                                                 "region": {"startLine": 3}}}]}
+    result = {
+        "ruleId": "r",
+        "locations": [
+            {
+                "physicalLocation": {
+                    "artifactLocation": {"uri": "file:///src/my%20dir/A.java"},
+                    "region": {"startLine": 3},
+                }
+            }
+        ],
+    }
     (tmp_path / "a.sarif").write_text(json.dumps({"runs": [{"tool": {"driver": {"name": "t"}}, "results": [result]}]}))
     assert parse_sarif(tmp_path / "a.sarif", "t").alerts[0].file == "my dir/A.java"

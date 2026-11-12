@@ -50,8 +50,16 @@ def test_hide_payload_keeps_llm_and_drops_code():
     llm_in = {"model": "m", "messages": [{"role": "user", "content": MARK}]}
     llm_out = {"choices": [{"message": {"content": MARK}}]}
     assert tracing.hide_payload(llm_in) is llm_in and tracing.hide_payload(llm_out) is llm_out
-    state = {"history": [{"content": MARK}], "case": CASE, "used": 3, "done": False, "error": "e",
-             "slice_text": MARK, "path": Path("/a/B.java"), "gateway": object()}
+    state = {
+        "history": [{"content": MARK}],
+        "case": CASE,
+        "used": 3,
+        "done": False,
+        "error": "e",
+        "slice_text": MARK,
+        "path": Path("/a/B.java"),
+        "gateway": object(),
+    }
     brief = tracing.hide_payload(state)
     assert MARK not in _dump(brief) and state["slice_text"] == MARK  # 원본 상태는 건드리지 않는다
     assert brief["used"] == 3 and brief["done"] is False and brief["case"] == "c1" and brief["error"] == "e"

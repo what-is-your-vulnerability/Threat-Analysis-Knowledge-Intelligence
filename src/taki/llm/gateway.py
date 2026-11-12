@@ -100,8 +100,12 @@ class LlmGateway:
             raise ConfigError(f"역할 '{role}'의 모델이 정해지지 않았습니다.")
 
         entry = ManifestEntry(
-            manifest_id=uuid.uuid4().hex[:16], role=role, model=model, prompt_version=prompt_version,
-            case_id=case_id, sent_files=sent_files or [],
+            manifest_id=uuid.uuid4().hex[:16],
+            role=role,
+            model=model,
+            prompt_version=prompt_version,
+            case_id=case_id,
+            sent_files=sent_files or [],
         )
         masked = [self._mask_message(m) for m in messages]
         texts = [m["content"] for m in masked if isinstance(m.get("content"), str)]
@@ -197,5 +201,9 @@ class LlmGateway:
                 parsed = schema.model_validate(json.loads(message.content or ""))
             except (json.JSONDecodeError, ValidationError) as e:
                 raise LlmFormatError(f"응답 형식 오류: {type(e).__name__}") from e
-        return LlmResponse(content=message.content, parsed=parsed, tool_calls=tool_calls,
-                           usage={"input": entry.input_tokens, "output": entry.output_tokens})
+        return LlmResponse(
+            content=message.content,
+            parsed=parsed,
+            tool_calls=tool_calls,
+            usage={"input": entry.input_tokens, "output": entry.output_tokens},
+        )

@@ -23,8 +23,13 @@ NOT_PROVEN = Review(result=ReviewResult.not_proven)
 
 
 def path(claim=Claim.absent, file="A.java", symbol="A.delete"):
-    return EvidencePath(claim=claim, statement="s", category=2, root_symbol=symbol,
-                        hops=[Hop(file=file, start=1, end=1, quote="q", role=Role.root_control)])
+    return EvidencePath(
+        claim=claim,
+        statement="s",
+        category=2,
+        root_symbol=symbol,
+        hops=[Hop(file=file, start=1, end=1, quote="q", role=Role.root_control)],
+    )
 
 
 REFUTED_WITH_PROOF = Review(result=ReviewResult.refuted, evidence=path(Claim.implemented), evidence_check=PASS)
