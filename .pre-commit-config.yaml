@@ -1,0 +1,27 @@
+# 커밋 전에 uv.lock에 고정된 버전으로 검사한다. 설치: uv run pre-commit install --allow-missing-config
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        entry: uv run ruff check
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff-format
+        entry: uv run ruff format --check
+        language: system
+        types: [python]
+      - id: mypy
+        name: mypy
+        # 대상은 pyproject [tool.mypy] files(src). 바뀐 파일만 넘기면 결과가 커밋마다 달라진다.
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: pytest
+        name: pytest
+        entry: uv run pytest -q
+        language: system
+        types: [python]
+        pass_filenames: false
