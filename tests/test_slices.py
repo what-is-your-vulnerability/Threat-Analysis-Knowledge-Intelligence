@@ -13,10 +13,8 @@ from taki.steps.cases import load_rules
 from taki.steps.scope import scan_scope
 from taki.steps.slices import build_slices, fallback_slices, render_slice
 
-ROOT = Path(__file__).resolve().parents[2]
-CANONICAL = ROOT / "benchmarks" / "canonical-bss"
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
-needs_canonical = pytest.mark.skipif(not CANONICAL.exists(), reason="정본 없음")
+DELETE = "DELETE /api/v1/admin/members/{id}"
 
 
 def slices_of(root, **kw):
@@ -32,114 +30,95 @@ def lines_of(slice_, snapshot):
 
 
 @pytest.fixture(scope="module")
-def canonical():
-    docs = sorted((CANONICAL / "designs" / "dev").glob("F*.md"))
-    snapshot, slices = slices_of(CANONICAL / "impl" / "java", design_docs=docs)
+def extended(extended_app):
+    snapshot, slices = slices_of(extended_app, design_docs=[FIX / "extended" / "design.md"])
     return snapshot, {s.name: s for s in slices}
 
 
-@needs_canonical
-def test_groups_by_first_fixed_segment(canonical):
-    _, slices = canonical
-    assert set(slices) == {"admin", "signup", "consultant", "auth", "me"}
-    assert len(slices["admin"].flows) == 9 and len(slices["signup"].flows) == 3
+def test_groups_by_first_fixed_segment(extended):
+    _, slices = extended
+    assert set(slices) == {"admin", "signup", "auth", "me"}  # /api/v1 같은 버전 접두는 건너뛴다
+    assert len(slices["admin"].flows) == 4 and len(slices["signup"].flows) == 2
 
 
-@needs_canonical
-def test_admin_slice_contents(canonical):
-    snapshot, slices = canonical
+def test_admin_slice_contents(extended):
+    snapshot, slices = extended
     admin = slices["admin"]
     files = {Path(f.path).name for f in admin.files}
     assert {
-        "MemberAdminController.java",
+        "MemberController.java",
         "MemberViewController.java",
-        "MemberAdminService.java",
-        "AccountMapper.xml",
+        "MemberService.java",
+        "MemberMapper.xml",
         "SecurityConfig.java",
-        "SessionAccountFilter.java",
+        "SessionMemberFilter.java",
     } <= files
     assert "SignupService.java" not in files and lines_of(admin, snapshot) <= 1500
 
 
-@needs_canonical
-def test_only_called_methods_are_sent(canonical):
-    _, slices = canonical
+def test_only_called_methods_are_sent(extended):
+    _, slices = extended
     names = {Path(f.path).name for f in slices["me"].files}
-    assert "SecurityConfig.java" in names and "MemberAdminController.java" not in names and slices["me"].truncated == []
-    service = next(f for f in slices["admin"].files if f.path.endswith("MemberAdminService.java"))
+    assert "SecurityConfig.java" in names and "MemberController.java" not in names and slices["me"].truncated == []
+    service = next(f for f in slices["admin"].files if f.path.endswith("MemberService.java"))
     assert service.ranges is not None  # 클래스 전체가 아니라 호출된 메서드만 넣는다
 
 
-@needs_canonical
-def test_view_template_included(canonical):
-    _, slices = canonical
+def test_view_template_included(extended):
+    _, slices = extended
     assert "src/main/resources/templates/admin/member-detail.html" in {f.path for f in slices["admin"].files}
 
 
-@needs_canonical
-def test_sql_fragment_lines_are_included(canonical):
-    snapshot, slices = canonical
-    assert "memberColumns" in render_slice(slices["admin"], snapshot) and "C_RESIDENT_REG_NO" in render_slice(
-        slices["admin"], snapshot
-    )
+def test_sql_fragment_lines_are_included(extended):
+    snapshot, slices = extended
+    rendered = render_slice(slices["admin"], snapshot)
+    assert "memberColumns" in rendered and "PHONE_NO" in rendered  # 다른 namespace의 <sql> 조각
 
 
-@needs_canonical
-def test_flow_has_hops_in_order(canonical):
-    _, slices = canonical
-    flow = next(f for f in slices["admin"].flows if f.flow_id == "DELETE /api/v1/admin/members/{account_id}")
+def test_flow_has_hops_in_order(extended):
+    _, slices = extended
+    flow = next(f for f in slices["admin"].flows if f.flow_id == DELETE)
     names = [Path(h.file).name for h in flow.hops]
-    assert names[0] == "MemberAdminController.java"
-    assert (
-        names.index("MemberAdminController.java")
-        < names.index("MemberAdminService.java")
-        < names.index("AccountMapper.xml")
-    )
+    assert names[0] == "MemberController.java"
+    assert names.index("MemberController.java") < names.index("MemberService.java") < names.index("MemberMapper.xml")
     assert flow.hops[0].role == Role.entrypoint
-    assert any(h.role == Role.sink and h.file.endswith("AccountMapper.xml") for h in flow.hops)
+    assert any(h.role == Role.sink and h.file.endswith("MemberMapper.xml") for h in flow.hops)
     assert flow.unresolved == [] and flow.middleware_complete
 
 
-@needs_canonical
-def test_sibling_table_lists_guards(canonical):
-    _, slices = canonical
+def test_sibling_table_lists_guards(extended):
+    _, slices = extended
     rows = {f"{r['method']} {r['path']}": r for r in slices["admin"].sibling_table}
-    assert "hasRole('ADMIN')" in rows["DELETE /api/v1/admin/members/{account_id}"]["guards"]
-    assert rows["POST /api/v1/admin/members/{account_id}/suspend"]["guards"]
+    assert rows[DELETE]["guards"] == ["authenticated"]  # 형제와 달리 관리자 확인이 없다
+    assert "hasRole('ADMIN')" in rows["POST /api/v1/admin/members/{id}/suspend"]["guards"]
 
 
-@needs_canonical
-def test_related_writers_listed(canonical):
-    _, slices = canonical
-    assert any("ACCOUNT" in r and "/api/v1/signup" in r for r in slices["admin"].related)
+def test_related_writers_listed(extended):
+    _, slices = extended
+    assert any("MEMBER" in r and "/api/v1/signup" in r for r in slices["admin"].related)
 
 
-@needs_canonical
-def test_requirement_mapped_from_design(canonical):
-    _, slices = canonical
-    assert "F3-admin-members.md#4.6" in slices["admin"].requirement_refs
-    row = next(
-        r for r in slices["admin"].sibling_table if r["path"].endswith("{account_id}") and r["method"] == "DELETE"
-    )
-    assert row["requirement"] == "F3-admin-members.md#4.6"
+def test_requirement_mapped_from_design(extended):
+    _, slices = extended
+    assert "design.md#4.6" in slices["admin"].requirement_refs
+    row = next(r for r in slices["admin"].sibling_table if f"{r['method']} {r['path']}" == DELETE)
+    assert row["requirement"] == "design.md#4.6"
 
 
-@needs_canonical
-def test_over_budget_splits_and_records_truncation():
-    snapshot, slices = slices_of(CANONICAL / "impl" / "java", max_lines=50)
-    assert len(slices) > 5 and any(s.truncated for s in slices)
+def test_over_budget_splits_and_records_truncation(extended_app):
+    snapshot, slices = slices_of(extended_app, max_lines=50)
+    assert len(slices) > 4 and any(s.truncated for s in slices)
     truncated = next(s for s in slices if s.truncated)
     assert truncated.capability == Capability.partial
     assert all(lines_of(s, snapshot) <= 50 or len(s.files) == 1 for s in slices)
     flows = sorted(f.flow_id for s in slices for f in s.flows)
-    assert len(flows) == 20  # 나눠도 API를 버리지 않는다
+    assert len(flows) == 8  # 나눠도 API를 버리지 않는다
 
 
-@needs_canonical
-def test_sibling_table_survives_split():
-    _, slices = slices_of(CANONICAL / "impl" / "java", max_lines=50)
-    deleting = next(s for s in slices if any(f.flow_id.startswith("DELETE /api/v1/admin/members") for f in s.flows))
-    assert len(deleting.sibling_table) == 9
+def test_sibling_table_survives_split(extended_app):
+    _, slices = slices_of(extended_app, max_lines=50)
+    deleting = next(s for s in slices if any(f.flow_id == DELETE for f in s.flows))
+    assert len(deleting.flows) == 1 and len(deleting.sibling_table) == 4
 
 
 def test_single_api_has_empty_sibling_table(tmp_path):
