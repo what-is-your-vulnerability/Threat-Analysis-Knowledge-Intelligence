@@ -117,12 +117,12 @@ uv run pytest -m codeql                       # 로컬에서 빌드한 CodeQL �
 ## 평가
 
 ```bash
-uv run python eval/run.py --condition C --variant DEV-D0 --repeat 3 --experiment bc
-uv run python eval/score.py bc C
-uv run python eval/derive_dev_rules.py --config taki.yml   # 조건 D·E용 규칙
+uv run python eval/derive_dev_rules.py --target ../taki-scan-target-a --design 설계.md --out rules.yml --config taki.yml   # 조건 D·E용 규칙
+uv run python eval/run.py --condition C --variant A --target ../taki-scan-target-a --repeat 3 --experiment bc
+uv run python eval/run.py --condition E --variant A --target ../taki-scan-target-a --design 설계.md --rules rules.yml
 ```
 
-정답은 `eval/score.py`가 기존 채점기로만 읽는다. 칸별 결과 파일에는 정답 라벨이 들어 있어 커밋하지 않는다. 수치는 `eval/reports/README.md`에 있고 모두 잠정이다.
+`--slices`가 없으면 진입점에서 묶음을 자동으로 만든다. 채점은 평가 담당이 하고 이 저장소는 정답을 읽지 않는다. `eval/reports/README.md`의 수치는 폐기한 옛 DEV 자료 기준 지난 기록이다.
 
 ## 알려진 한계
 

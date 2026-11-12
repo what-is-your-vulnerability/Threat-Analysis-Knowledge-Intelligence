@@ -5,8 +5,7 @@ import pytest
 from taki.adapters.lang.mybatis import parse_mappers
 from taki.steps.scope import scan_scope
 
-CANONICAL = Path(__file__).resolve().parents[2] / "benchmarks" / "canonical-bss" / "impl" / "java"
-needs_canonical = pytest.mark.skipif(not CANONICAL.exists(), reason="정본 없음")
+FIX = Path(__file__).parent / "fixtures" / "spring-members"
 MAPPER = (
     """<?xml version="1.0"?>
 <mapper namespace="a.B">
@@ -71,15 +70,13 @@ def test_include_cycle_does_not_hang(tmp_path):
     assert parse_mappers(scan_scope(tmp_path)).errors
 
 
-@needs_canonical
-def test_canonical_account_mapper():
-    statement = parse_mappers(scan_scope(CANONICAL))[("com.bss.customer.account.AccountMapper", "findById")]
-    assert statement.tables == {"ACCOUNT"} and statement.hash_params == {"accountId"}
+def test_demo_mapper_with_doctype():
+    statement = parse_mappers(scan_scope(FIX / "vulnerable"))[("demo.member.MemberMapper", "deleteById")]
+    assert statement.tables == {"MEMBER"} and statement.hash_params == {"id"} and statement.kind == "delete"
 
 
-@needs_canonical
-def test_include_across_namespace():
-    mappers = parse_mappers(scan_scope(CANONICAL))
-    assigned = mappers[("com.bss.customer.customer.CustomerMapper", "findAssigned")]
-    assert "C_RESIDENT_REG_NO" in assigned.sql and assigned.hash_params >= {"consultantId", "offset", "size"}
+def test_include_across_namespace(extended_app):
+    mappers = parse_mappers(scan_scope(extended_app))
+    detail = mappers[("demo.member.MemberDetailMapper", "findById")]
+    assert "PHONE_NO" in detail.sql and detail.hash_params == {"id"}
     assert mappers.errors == []
