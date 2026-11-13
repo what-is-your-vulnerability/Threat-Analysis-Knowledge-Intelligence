@@ -238,10 +238,154 @@ def test_codeql_definition_never_pulls_and_needs_java(tmp_path):
     spec = load_scanner("codeql", Path.cwd())
     args = docker_args(spec, _snapshot(), tmp_path, "n")
     assert args[args.index("--pull") + 1] == "never" and args[args.index("--platform") + 1] == "linux/amd64"
-    assert spec.languages == ["java"] and spec.rules == [] and "--output=/out/codeql.sarif" in args[-1]
+    assert spec.languages == ["java"] and spec.rules == [] and "--output=/out/codeql.sarif" in args
     # Docker VM(약 7.75GiB) 안에서 끝나도록: 컨테이너 6g, CodeQL --ram은 그보다 낮게, 스레드는 고정
     assert args[args.index("--memory") + 1] == "6g"
-    assert args[-1].count("--ram=4096") == 2 and args[-1].count("--threads=4") == 2 and "--threads=0" not in args[-1]
+    prep = docker_args(spec, _snapshot(), tmp_path, "n", prepare=True)
+    for step in (args, prep):
+        assert step.count("--ram=4096") == 1 and step.count("--threads=4") == 1 and "--threads=0" not in step
+
+
+def test_codeql_prepare_only_reaches_maven_central_through_proxy(tmp_path):
+    # Java build-mode=none은 의존 jar를 Maven Central에서 받는다. 막으면 오류 없이 0건이 된다(11/13 시험).
+    spec = load_scanner("codeql", Path.cwd())
+    assert spec.prepare_allow_hosts == ["repo.maven.apache.org"]
+    prep = docker_args(spec, _snapshot(), tmp_path, "n", prepare=True, network="taki-net-x", proxy_host="proxy")
+    main = docker_args(spec, _snapshot(), tmp_path, "n", network="taki-net-x")
+    assert prep[prep.index("--network") + 1] == "taki-net-x" and main[main.index("--network") + 1] == "none"
+    assert prep[prep.index("taki-codeql:2.27.4") + 1 :][:3] == ["codeql", "database", "create"]
+    assert main[main.index("taki-codeql:2.27.4") + 1 :][:3] == ["codeql", "database", "analyze"]
+    envs = [prep[i + 1] for i, a in enumerate(prep) if a == "-e"]
+    assert "CODEQL_PROXY_HOST=proxy" in envs and "CODEQL_PROXY_PORT=3128" in envs
+    assert any(e.startswith("CODEQL_PROXY_URLS=") and "repo.maven.apache.org/maven2" in e for e in envs)
+    assert not any(e.startswith("CODEQL_PROXY") for e in [main[i + 1] for i, a in enumerate(main) if a == "-e"])
+    # 두 단계가 같은 /work를 쓰고, 둘 다 코드는 읽기 전용이며 루트 파일시스템도 읽기 전용이다
+    for step in (prep, main):
+        mounts = [step[i + 1] for i, a in enumerate(step) if a == "--mount"]
+        assert any(m.endswith("dst=/work") for m in mounts) and any(m.endswith("dst=/src,readonly") for m in mounts)
+        assert "--read-only" in step
+
+
+def test_scanners_without_prepare_stay_offline(tmp_path):
+    spec = _semgrep()
+    assert spec.prepare == [] and spec.prepare_allow_hosts == [] and spec.prepare_env == {}
+    args = docker_args(spec, _snapshot(), tmp_path, "n")
+    assert args[args.index("--network") + 1] == "none"
+
+
+@pytest.mark.parametrize(
+    "update",
+    [
+        {"prepare_allow_hosts": ["repo.maven.apache.org"]},  # prepare 없이 호스트만
+        {"prepare": ["true"], "prepare_allow_hosts": ["https://repo.maven.apache.org"]},  # 스킴
+        {"prepare": ["true"], "prepare_allow_hosts": ["*.apache.org"]},  # 와일드카드
+        {"prepare": ["true"], "prepare_allow_hosts": ["a.com,b.com"]},  # 쉼표
+        {"prepare": ["true"], "prepare_env": {"X": "{proxy_host}"}},  # 프록시 없이 프록시 주소 사용
+        {"prepare": ["true"], "prepare_env": {"BAD NAME": "1"}},
+    ],
+)
+def test_bad_prepare_network_settings_are_rejected(update):
+    with pytest.raises(ConfigError):
+        load_scanner({**_semgrep().model_dump(mode="json"), "rules": [], **update}, Path.cwd())
+
+
+class _FakeDocker:
+    """docker 호출을 기록한다. fail에 든 하위 명령은 실패한다."""
+
+    def __init__(self, tmp_path, fail=(), timeout_on=None):
+        self.calls, self.fail, self.timeout_on, self.tmp_path = [], set(fail), timeout_on, tmp_path
+
+    def __call__(self, args, **k):
+        self.calls.append(list(args))
+        sub = args[1]
+        if sub == "run" and "--rm" in args and "-d" not in args and "--user" in args:  # 스캐너 컨테이너
+            sub = "scan-prepare" if args[args.index("--network") + 1] != "none" else "scan-main"
+            if sub == "scan-main":
+                (self.tmp_path / "scanners" / "semgrep.sarif").write_text((FIX / "results.sarif").read_text())
+        if sub == self.timeout_on:
+            raise subprocess.TimeoutExpired("docker", 1)
+        return subprocess.CompletedProcess(args, 3 if sub in self.fail else 0, "", f"{sub} failed")
+
+    def subs(self):
+        return [
+            ("run-d" if c[1] == "run" and "-d" in c else c[1]) + (":" + c[2] if c[1] == "network" else "")
+            for c in self.calls
+        ]
+
+
+def _proxied_spec():
+    return _semgrep().model_copy(
+        update={
+            "prepare": ["true"],
+            "prepare_allow_hosts": ["repo.maven.apache.org"],
+            "prepare_env": {"P": "{proxy_host}"},
+        }
+    )
+
+
+def test_prepare_runs_through_egress_proxy_and_cleans_up(monkeypatch, tmp_path):
+    fake = _FakeDocker(tmp_path)
+    monkeypatch.setattr(subprocess, "run", fake)
+    monkeypatch.setattr("taki.adapters.scanner.docker.time.sleep", lambda s: None)
+    outcome = run_scanner(_proxied_spec(), _snapshot(), tmp_path)
+    assert outcome.status == Capability.supported, outcome.errors
+    assert fake.subs() == [
+        "network:create", "run-d", "network:connect", "exec", "run", "rm", "network:rm", "run",
+    ]  # fmt: skip
+    create, proxy, connect, _, prep, rm, netrm, main = fake.calls
+    net = create[-1]
+    assert "--internal" in create and netrm[-1] == net
+    assert (
+        "ALLOW_HOSTS=repo.maven.apache.org" in proxy
+        and "taki-egress-proxy:1" in proxy
+        and proxy[proxy.index("--network") + 1] == net
+    )
+    assert connect[-2:] == ["bridge", proxy[proxy.index("--name") + 1]] and rm[-1] == proxy[proxy.index("--name") + 1]
+    assert prep[prep.index("--network") + 1] == net and "P=proxy" in prep
+    assert main[main.index("--network") + 1] == "none"
+    assert not (tmp_path / "scanners" / "semgrep-work").exists()
+
+
+def test_prepare_failure_stops_the_scan_and_removes_the_proxy(monkeypatch, tmp_path):
+    fake = _FakeDocker(tmp_path, fail={"scan-prepare"})
+    monkeypatch.setattr(subprocess, "run", fake)
+    monkeypatch.setattr("taki.adapters.scanner.docker.time.sleep", lambda s: None)
+    outcome = run_scanner(_proxied_spec(), _snapshot(), tmp_path)
+    assert outcome.status == Capability.failed and "준비 단계" in outcome.errors[0]
+    assert fake.subs()[-2:] == ["rm", "network:rm"] and "scan-main" not in [c[1] for c in fake.calls]
+    assert not any(c[1] == "run" and "--user" in c and c[c.index("--network") + 1] == "none" for c in fake.calls)
+
+
+def test_proxy_start_failure_fails_before_any_scan_container(monkeypatch, tmp_path):
+    fake = _FakeDocker(tmp_path, fail={"run"})
+    monkeypatch.setattr(subprocess, "run", fake)
+    outcome = run_scanner(_proxied_spec(), _snapshot(), tmp_path)
+    assert outcome.status == Capability.failed and "접속 제한" in outcome.errors[0]
+    assert fake.subs()[-2:] == ["rm", "network:rm"]
+    assert not any("--user" in c for c in fake.calls)  # 스캐너 컨테이너는 한 번도 안 뜸
+
+
+def test_prepare_without_hosts_has_no_network_and_no_proxy(monkeypatch, tmp_path):
+    fake = _FakeDocker(tmp_path)
+    monkeypatch.setattr(subprocess, "run", fake)
+    spec = _semgrep().model_copy(update={"prepare": ["true"]})
+    # 준비 단계와 검사 단계 모두 네트워크가 없고(none), 프록시·네트워크 생성은 없다.
+    outcome = run_scanner(spec, _snapshot(), tmp_path)
+    assert outcome.status == Capability.supported, outcome.errors
+    assert len(fake.calls) == 2 and not any(c[1] == "network" for c in fake.calls)
+    assert all(c[c.index("--network") + 1] == "none" for c in fake.calls)
+
+
+def test_prepare_timeout_is_partial(monkeypatch, tmp_path):
+    def slow(args, **k):
+        if args[1] == "rm":
+            return subprocess.CompletedProcess(args, 0, "", "")
+        raise subprocess.TimeoutExpired("docker", 1)
+
+    monkeypatch.setattr(subprocess, "run", slow)
+    spec = _semgrep().model_copy(update={"prepare": ["true"], "timeout_seconds": 1})
+    outcome = run_scanner(spec, _snapshot(), tmp_path)
+    assert outcome.status == Capability.partial and "시간" in outcome.errors[0]
 
 
 @pytest.mark.codeql
