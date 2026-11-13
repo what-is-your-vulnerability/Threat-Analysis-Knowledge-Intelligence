@@ -4,15 +4,20 @@ from pathlib import Path
 import pytest
 from conftest import make_config
 
-from agent.cli.main import main
-from agent.config import ConfigError
-from agent.core.orchestrator import run_scan
-from agent.schemas.models import CaseSource, Fact, LedgerState, RunMode, VerdictState
-from agent.steps.cases import load_rules
+from taki.cli.main import main
+from taki.config import ConfigError
+from taki.core.orchestrator import run_scan
+from taki.schemas.models import CaseSource, Fact, LedgerState, RunMode, VerdictState
+from taki.steps.cases import load_rules
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 VULN, FIXED, DESIGN, SLICES, RULES_FILE = (
-    FIX / "vulnerable", FIX / "fixed", FIX / "design.md", FIX / "slices.yml", FIX / "rules.yml")
+    FIX / "vulnerable",
+    FIX / "fixed",
+    FIX / "design.md",
+    FIX / "slices.yml",
+    FIX / "rules.yml",
+)
 RULES = load_rules(RULES_FILE)
 
 
@@ -66,8 +71,13 @@ def test_report_never_says_safe(scripted, tmp_path):
 
 
 def test_report_escapes_code(fake, tmp_path):
-    claim = {"claim": "absent", "statement": "<script>alert(1)</script>", "hops": [], "basis": ["x"],
-             "expected_positions": ["y"]}
+    claim = {
+        "claim": "absent",
+        "statement": "<script>alert(1)</script>",
+        "hops": [],
+        "basis": ["x"],
+        "expected_positions": ["y"],
+    }
     fake.responses += [
         {"match": "재검토한다", "content": '{"result": "kept"}'},
         {"match": "수정 방법을 제안한다", "content": '{"location": "l", "code_example": "c", "check_scenario": "s"}'},
@@ -93,33 +103,64 @@ def test_failed_scope_exit_3(tmp_path):
 
 
 def make_config_unused():
-    from agent.config import AgentConfig
+    from taki.config import AgentConfig
 
     return AgentConfig()
 
 
 def test_missing_model_is_not_turned_into_a_finding(fake, tmp_path):
     with pytest.raises(ConfigError):
-        run_scan(VULN, design=[], out=tmp_path, config=make_config(fake, models={"investigate": None}),
-                 slices_file=SLICES, rules=RULES)
+        run_scan(
+            VULN,
+            design=[],
+            out=tmp_path,
+            config=make_config(fake, models={"investigate": None}),
+            slices_file=SLICES,
+            rules=RULES,
+        )
     assert fake.requests == []
 
 
 def test_forbidden_design_path_rejected(fake, tmp_path):
-    from agent.adapters.repo.local import ForbiddenPathError
+    from taki.adapters.repo.local import ForbiddenPathError
 
     with pytest.raises(ForbiddenPathError):
-        run_scan(VULN, design=[tmp_path / "ground-truth-private" / "x.md"], out=tmp_path / "o",
-                 config=make_config(fake), slices_file=SLICES, rules=RULES)
+        run_scan(
+            VULN,
+            design=[tmp_path / "ground-truth-private" / "x.md"],
+            out=tmp_path / "o",
+            config=make_config(fake),
+            slices_file=SLICES,
+            rules=RULES,
+        )
 
 
 def test_quote_failure_requests_once_more(fake, tmp_path):
-    bad = {"claims": [{"claim": "absent", "statement": "s", "root_symbol": "MemberController.delete", "basis": ["x"],
-                       "expected_positions": ["y"],
-                       "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 1, "end": 1,
-                                 "quote": "없는 문장", "role": "root_control"}]}]}
-    fake.responses += [{"content": json.dumps(bad)}, {"content": json.dumps(bad)},
-                       {"content": '{"claims": []}'}]  # 세 번째는 고정 질문 항목
+    bad = {
+        "claims": [
+            {
+                "claim": "absent",
+                "statement": "s",
+                "root_symbol": "MemberController.delete",
+                "basis": ["x"],
+                "expected_positions": ["y"],
+                "hops": [
+                    {
+                        "file": "src/main/java/demo/member/MemberController.java",
+                        "start": 1,
+                        "end": 1,
+                        "quote": "없는 문장",
+                        "role": "root_control",
+                    }
+                ],
+            }
+        ]
+    }
+    fake.responses += [
+        {"content": json.dumps(bad)},
+        {"content": json.dumps(bad)},
+        {"content": '{"claims": []}'},
+    ]  # 세 번째는 고정 질문 항목
     r = _scan(fake, tmp_path)
     assert len(fake.requests) == 3 and "quote_not_found" in json.dumps(fake.requests[1]["messages"], ensure_ascii=False)
     assert r.verdicts[0].state == VerdictState.unverified
@@ -127,10 +168,30 @@ def test_quote_failure_requests_once_more(fake, tmp_path):
 
 def test_refuted_review_evidence_is_checked(fake, tmp_path):
     fake.responses += [
-        {"match": "재검토한다", "content": json.dumps({"result": "refuted", "reason": "있다", "evidence": {
-            "claim": "implemented", "statement": "s", "checked_value": "x", "used_value": "x",
-            "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 1, "end": 1,
-                      "quote": "지어낸 코드 x", "role": "root_control"}]}})},
+        {
+            "match": "재검토한다",
+            "content": json.dumps(
+                {
+                    "result": "refuted",
+                    "reason": "있다",
+                    "evidence": {
+                        "claim": "implemented",
+                        "statement": "s",
+                        "checked_value": "x",
+                        "used_value": "x",
+                        "hops": [
+                            {
+                                "file": "src/main/java/demo/member/MemberController.java",
+                                "start": 1,
+                                "end": 1,
+                                "quote": "지어낸 코드 x",
+                                "role": "root_control",
+                            }
+                        ],
+                    },
+                }
+            ),
+        },
         *json.loads((FIX / "fake_script.json").read_text(encoding="utf-8"))[3:],
     ]
     r = _scan(fake, tmp_path)
@@ -147,7 +208,7 @@ def test_cli_scan_and_recheck(scripted, tmp_path, capsys, monkeypatch):
 
 
 def test_cli_reports_missing_model_without_traceback(tmp_path, capsys, monkeypatch):
-    monkeypatch.chdir(tmp_path)  # 작업 폴더의 agent.yml을 읽지 않게 한다.
+    monkeypatch.chdir(tmp_path)  # 작업 폴더의 taki.yml을 읽지 않게 한다.
     code = main(["scan", str(VULN), "--out", str(tmp_path / "a"), "--slices", str(SLICES), "--rules", str(RULES_FILE)])
     assert code == 3 and "모델" in capsys.readouterr().err
 
@@ -160,8 +221,13 @@ def test_all_11_questions_sent(scripted, tmp_path):
 
 
 def test_no_issue_is_not_implemented(fake, tmp_path):
-    answer = {"claims": [], "dispositions": [{"lens_id": x, "disposition": "no_issue"} for x in (
-        "L1", "L2a", "L2b", "L2c", "L3", "L4", "L5", "L6a", "L6b", "L7", "L8")]}
+    answer = {
+        "claims": [],
+        "dispositions": [
+            {"lens_id": x, "disposition": "no_issue"}
+            for x in ("L1", "L2a", "L2b", "L2c", "L3", "L4", "L5", "L6a", "L6b", "L7", "L8")
+        ],
+    }
     fake.responses.append({"match": "lens_id별로", "content": json.dumps(answer)})
     r = run_scan(VULN, design=[], out=tmp_path, config=make_config(fake), slices_file=SLICES)
     assert r.verdicts == [] and r.exit_code == 0
@@ -179,8 +245,13 @@ def test_missing_answer_shows_in_report(fake, tmp_path):
 def test_out_of_scope_alert_skips_llm(fake, tmp_path):
     answer = {"claims": [], "dispositions": []}
     fake.responses.append({"match": "lens_id별로", "content": json.dumps(answer)})
-    alert = Fact(kind="alert", file="src/main/java/demo/member/MemberService.java", line=3, tool="semgrep",
-                 detail={"cwe": "CWE-918", "rule": "ssrf", "message": "SSRF 위험 원문"})
+    alert = Fact(
+        kind="alert",
+        file="src/main/java/demo/member/MemberService.java",
+        line=3,
+        tool="semgrep",
+        detail={"cwe": "CWE-918", "rule": "ssrf", "message": "SSRF 위험 원문"},
+    )
     r = run_scan(VULN, design=[], out=tmp_path, config=make_config(fake), slices_file=SLICES, alerts=[alert])
     assert not any("SSRF 위험 원문" in json.dumps(q, ensure_ascii=False) for q in fake.requests)
     assert "SSRF 위험 원문" in (tmp_path / "report.html").read_text() and r.findings[0].tool_confirmed
@@ -189,11 +260,22 @@ def test_out_of_scope_alert_skips_llm(fake, tmp_path):
 
 def test_sibling_guard_cannot_refute_missing(fake, tmp_path):
     # 재검토가 형제 API(suspend)의 @PreAuthorize를 delete의 기각 근거로 내도 누락이 구현 확인으로 바뀌면 안 된다.
-    sibling = {"claim": "implemented", "statement": "관리자 확인이 있다", "checked_value": "hasRole('ADMIN')",
-               "used_value": "hasRole('ADMIN')", "root_symbol": "MemberController.delete",
-               "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 28, "end": 37,
-                         "quote": "@PreAuthorize(\"hasRole('ADMIN')\")\n    public void suspend(@PathVariable long id) {",
-                         "role": "root_control"}]}
+    sibling = {
+        "claim": "implemented",
+        "statement": "관리자 확인이 있다",
+        "checked_value": "hasRole('ADMIN')",
+        "used_value": "hasRole('ADMIN')",
+        "root_symbol": "MemberController.delete",
+        "hops": [
+            {
+                "file": "src/main/java/demo/member/MemberController.java",
+                "start": 28,
+                "end": 37,
+                "quote": "@PreAuthorize(\"hasRole('ADMIN')\")\n    public void suspend(@PathVariable long id) {",
+                "role": "root_control",
+            }
+        ],
+    }
     fake.responses += [
         {"match": "재검토한다", "content": json.dumps({"result": "refuted", "reason": "있다", "evidence": sibling})},
         *json.loads((FIX / "fake_script.json").read_text(encoding="utf-8"))[2:],
@@ -207,7 +289,7 @@ def test_unexpected_error_exits_3(tmp_path, capsys, monkeypatch):
     def broken(*args, **kwargs):
         raise RuntimeError("예상 못 한 오류")
 
-    monkeypatch.setattr("agent.cli.main.run_scan", broken)
+    monkeypatch.setattr("taki.cli.main.run_scan", broken)
     code = main(["scan", str(VULN), "--out", str(tmp_path / "a"), "--slices", str(SLICES)])
     assert code == 3 and "예상 못 한 오류" in capsys.readouterr().err
 
@@ -220,8 +302,13 @@ def test_all_llm_failures_are_not_shown_as_zero_issues(fake, tmp_path):
 
 
 def test_failed_alert_investigation_keeps_the_scanner_finding(fake, tmp_path):
-    alert = Fact(kind="alert", file="src/main/java/demo/member/MemberService.java", line=22, tool="semgrep",
-                 detail={"cwe": "CWE-89", "rule": "sql", "message": "SQL 조립 경고 원문"})
+    alert = Fact(
+        kind="alert",
+        file="src/main/java/demo/member/MemberService.java",
+        line=22,
+        tool="semgrep",
+        detail={"cwe": "CWE-89", "rule": "sql", "message": "SQL 조립 경고 원문"},
+    )
     r = run_scan(VULN, design=[], out=tmp_path, config=make_config(fake), slices_file=SLICES, alerts=[alert])
     assert any(f.tool_confirmed and f.statement == "SQL 조립 경고 원문" for f in r.findings)
 
@@ -231,45 +318,92 @@ def test_out_inside_target_is_not_analyzed(scripted, tmp_path):
 
     target = tmp_path / "app"
     shutil.copytree(VULN, target)
-    first = run_scan(target, design=[DESIGN], out=target / "runs" / "a", config=make_config(scripted),
-                     slices_file=SLICES, rules=RULES)
+    first = run_scan(
+        target,
+        design=[DESIGN],
+        out=target / "runs" / "a",
+        config=make_config(scripted),
+        slices_file=SLICES,
+        rules=RULES,
+    )
     assert not any(f.path.startswith("runs/") for f in first.snapshot.files)
-    second = run_scan(target, design=[DESIGN], out=target / "runs" / "b", config=make_config(scripted),
-                      slices_file=SLICES, rules=RULES)
+    second = run_scan(
+        target,
+        design=[DESIGN],
+        out=target / "runs" / "b",
+        config=make_config(scripted),
+        slices_file=SLICES,
+        rules=RULES,
+    )
     assert not any(f.path.startswith("runs/") for f in second.snapshot.files)
     assert {"runs/a", "runs/b"} <= {n.path for n in second.snapshot.not_read}
 
 
-QUESTION_CLAIM = {"claim": "absent", "statement": "삭제에 관리자 확인이 없다", "cwe": "CWE-862", "category": 2,
-                  "root_symbol": "MemberController.delete", "expected_positions": ["MemberController.delete"],
-                  "basis": ["MemberController.suspend의 hasRole"],
-                  "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 35, "end": 35,
-                            "quote": "public void delete(@PathVariable long id) {", "role": "root_control"}]}
-FIXED_PROOF = {"claim": "implemented", "statement": "관리자 확인이 있다", "category": 2,
-               "root_symbol": "MemberController.delete", "checked_value": "hasRole('ADMIN')",
-               "used_value": "hasRole('ADMIN')",
-               "hops": [{"file": "src/main/java/demo/member/MemberController.java", "start": 36, "end": 37,
-                         "quote": "@PreAuthorize(\"hasRole('ADMIN')\")\n    public void delete(@PathVariable long id) {",
-                         "role": "root_control"}]}
+QUESTION_CLAIM = {
+    "claim": "absent",
+    "statement": "삭제에 관리자 확인이 없다",
+    "cwe": "CWE-862",
+    "category": 2,
+    "root_symbol": "MemberController.delete",
+    "expected_positions": ["MemberController.delete"],
+    "basis": ["MemberController.suspend의 hasRole"],
+    "hops": [
+        {
+            "file": "src/main/java/demo/member/MemberController.java",
+            "start": 35,
+            "end": 35,
+            "quote": "public void delete(@PathVariable long id) {",
+            "role": "root_control",
+        }
+    ],
+}
+FIXED_PROOF = {
+    "claim": "implemented",
+    "statement": "관리자 확인이 있다",
+    "category": 2,
+    "root_symbol": "MemberController.delete",
+    "checked_value": "hasRole('ADMIN')",
+    "used_value": "hasRole('ADMIN')",
+    "hops": [
+        {
+            "file": "src/main/java/demo/member/MemberController.java",
+            "start": 36,
+            "end": 37,
+            "quote": "@PreAuthorize(\"hasRole('ADMIN')\")\n    public void delete(@PathVariable long id) {",
+            "role": "root_control",
+        }
+    ],
+}
 
 
 def test_question_issue_fixed_is_resolved_on_recheck(fake, tmp_path):
-    fake.responses += [{"match": "재검토한다", "content": '{"result": "kept"}'},
-                       {"match": "수정 방법을 제안한다", "content": '{"location": "l", "code_example": "c", "check_scenario": "s"}'}]
+    fake.responses += [
+        {"match": "재검토한다", "content": '{"result": "kept"}'},
+        {"match": "수정 방법을 제안한다", "content": '{"location": "l", "code_example": "c", "check_scenario": "s"}'},
+    ]
     fake.responses.append({"match": "lens_id별로", "content": json.dumps({"claims": [QUESTION_CLAIM]})})
     before = run_scan(VULN, design=[], out=tmp_path / "a", config=make_config(fake), slices_file=SLICES)
     assert before.findings[0].state == VerdictState.missing_suspected
-    fake.responses[:] = [{"match": "이전 검사의 주장", "content": json.dumps({"claims": [FIXED_PROOF]})},
-                         {"match": "lens_id별로", "content": '{"claims": []}'}]
-    after = run_scan(FIXED, design=[], out=tmp_path / "b", config=make_config(fake), slices_file=SLICES,
-                     mode=RunMode.recheck, previous=tmp_path / "a")
+    fake.responses[:] = [
+        {"match": "이전 검사의 주장", "content": json.dumps({"claims": [FIXED_PROOF]})},
+        {"match": "lens_id별로", "content": '{"claims": []}'},
+    ]
+    after = run_scan(
+        FIXED,
+        design=[],
+        out=tmp_path / "b",
+        config=make_config(fake),
+        slices_file=SLICES,
+        mode=RunMode.recheck,
+        previous=tmp_path / "a",
+    )
     assert {i.change for i in after.recheck} == {"resolved"}
 
 
-def test_semgrep_off_is_recorded(fake, tmp_path):
+def test_no_scanner_is_recorded_in_scan(fake, tmp_path):
     fake.responses.append({"match": "lens_id별로", "content": '{"claims": []}'})
     r = run_scan(VULN, design=[], out=tmp_path, config=make_config(fake), slices_file=SLICES)
-    assert any(c.subject == "semgrep" and c.state == LedgerState.deferred for c in r.ledger)
+    assert any(c.subject == "scanner:*" and c.state == LedgerState.deferred for c in r.ledger)
 
 
 def test_report_has_capability_table_and_partial_status(fake, tmp_path):
@@ -293,3 +427,21 @@ def test_unknown_framework_makes_status_partial(fake, tmp_path):
     fake.responses.append({"match": "lens_id별로", "content": '{"claims": []}'})
     run_scan(tmp_path / "t", design=[], out=tmp_path / "o", config=make_config(fake))
     assert json.loads((tmp_path / "o" / "report.json").read_text())["status"] == "partial"
+
+
+def test_scan_shows_alerts_to_rule_investigation(scripted, tmp_path):
+    alert = Fact(
+        kind="alert",
+        file="src/main/java/demo/member/MemberService.java",
+        line=22,
+        tool="semgrep",
+        detail={"cwe": "CWE-89", "rule": "sql", "message": "SQL 조립 경고 원문"},
+    )
+    _scan(scripted, tmp_path, alerts=[alert])
+    requests = [json.dumps(q, ensure_ascii=False) for q in scripted.requests]
+    rule_requests = [q for q in requests if "대상 API" in q]
+    assert rule_requests and all("=== 정적분석 경고" in q and "SQL 조립 경고 원문" in q for q in rule_requests)
+    review_requests = [q for q in requests if "재검토한다" in q]
+    assert review_requests and not any(
+        "SQL 조립 경고 원문" in q for q in review_requests
+    )  # 재검토는 경고를 보지 않는다

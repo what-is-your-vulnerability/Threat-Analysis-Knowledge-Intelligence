@@ -1,4 +1,4 @@
-from agent.schemas.models import (
+from taki.schemas.models import (
     CaseSource,
     Claim,
     EvidencePath,
@@ -11,9 +11,15 @@ from agent.schemas.models import (
 
 
 def test_evidence_path_round_trip():
-    p = EvidencePath(claim=Claim.absent, statement="s", cwe="CWE-862", category=2,
-                     hops=[Hop(file="A.java", start=1, end=2, quote="q", role=Role.root_control)],
-                     expected_positions=["A.java#delete"], basis=["F3#4.6"])
+    p = EvidencePath(
+        claim=Claim.absent,
+        statement="s",
+        cwe="CWE-862",
+        category=2,
+        hops=[Hop(file="A.java", start=1, end=2, quote="q", role=Role.root_control)],
+        expected_positions=["A.java#delete"],
+        basis=["F3#4.6"],
+    )
     assert EvidencePath.model_validate_json(p.model_dump_json()) == p
 
 

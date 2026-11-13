@@ -1,18 +1,17 @@
 from pathlib import Path
 
 import pytest
-import yaml
 
-from agent.adapters.lang.java_index import build_index
-from agent.adapters.lang.spring import extract_spring
-from agent.schemas.models import Capability, Certainty
-from agent.steps.scope import scan_scope
+from taki.adapters.lang.java_index import build_index
+from taki.adapters.lang.spring import extract_spring
+from taki.schemas.models import Capability, Certainty
+from taki.steps.scope import scan_scope
 
-ROOT = Path(__file__).resolve().parents[2]
-CANONICAL = ROOT / "benchmarks" / "canonical-bss"
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
-needs_canonical = pytest.mark.skipif(not CANONICAL.exists(), reason="정본 없음")
-POM = "<project><dependencies><dependency><artifactId>spring-boot-starter-web</artifactId></dependency></dependencies></project>\n"
+POM = (
+    "<project><dependencies><dependency><artifactId>spring-boot-starter-web</artifactId>"
+    "</dependency></dependencies></project>\n"
+)
 CONTROLLER = """package x;
 import org.springframework.web.bind.annotation.*;
 @RestController
@@ -42,17 +41,21 @@ def app(tmp_path, annotation='@GetMapping("/a")', prefix='"/p"', extra=""):
 
 
 @pytest.fixture(scope="module")
-def canonical():
-    return by_route(extract(CANONICAL / "impl" / "java"))
+def extended(extended_app):
+    return by_route(extract(extended_app))
 
 
-@needs_canonical
-def test_canonical_matches_openapi_20_operations(canonical):
-    spec = yaml.safe_load((CANONICAL / "api" / "dev.openapi.yaml").read_text(encoding="utf-8"))
-    base = spec["servers"][0]["url"]
-    verbs = {"get", "post", "put", "patch", "delete"}
-    expected = {(v.upper(), base + p) for p, item in spec["paths"].items() for v in item if v in verbs}
-    assert len(expected) == 20 and set(canonical) == expected
+def test_extended_routes_match_contract(extended):
+    assert set(extended) == {
+        ("GET", "/api/v1/admin/members"),
+        ("POST", "/api/v1/admin/members/{id}/suspend"),
+        ("DELETE", "/api/v1/admin/members/{id}"),
+        ("GET", "/admin/members/{id}"),
+        ("POST", "/api/v1/auth/login"),
+        ("GET", "/api/v1/me/profile"),
+        ("POST", "/api/v1/signup"),
+        ("POST", "/api/v1/signup/verifications/{verificationId}/complete"),
+    }
 
 
 def test_class_and_method_mapping_joined(tmp_path):
@@ -66,7 +69,11 @@ def test_class_and_method_mapping_joined(tmp_path):
 def test_array_and_request_mapping_method(tmp_path):
     annotation = '@RequestMapping(path = {"/a", "/b"}, method = {RequestMethod.GET, RequestMethod.POST})'
     assert set(by_route(extract(app(tmp_path, annotation)))) == {
-        ("GET", "/p/a"), ("POST", "/p/a"), ("GET", "/p/b"), ("POST", "/p/b")}
+        ("GET", "/p/a"),
+        ("POST", "/p/a"),
+        ("GET", "/p/b"),
+        ("POST", "/p/b"),
+    }
 
 
 def test_context_path_and_placeholder_from_config(tmp_path):
@@ -75,28 +82,24 @@ def test_context_path_and_placeholder_from_config(tmp_path):
     assert list(by_route(extract(tmp_path))) == [("GET", "/ctx/p/v2/x")]
 
 
-@needs_canonical
-def test_member_delete_guards(canonical):
-    guards = canonical[("DELETE", "/api/v1/admin/members/{account_id}")].effective_guards
+def test_url_and_method_guards_are_combined(extended):
+    guards = extended[("POST", "/api/v1/admin/members/{id}/suspend")].effective_guards
     assert "hasRole('ADMIN')" in guards and "authenticated" in guards
 
 
-@needs_canonical
-def test_permit_all_first_match(canonical):
-    assert canonical[("POST", "/api/v1/auth/login")].effective_guards == ["permitAll"]
-    wildcard = canonical[("POST", "/api/v1/signup/identity-verifications/{verification_id}/complete")]
+def test_permit_all_first_match(extended):
+    assert extended[("POST", "/api/v1/auth/login")].effective_guards == ["permitAll"]
+    wildcard = extended[("POST", "/api/v1/signup/verifications/{verificationId}/complete")]
     assert wildcard.effective_guards == ["permitAll"]
 
 
-@needs_canonical
-def test_filter_added_to_middleware(canonical):
-    entry = canonical[("DELETE", "/api/v1/admin/members/{account_id}")]
-    assert "SessionAccountFilter" in [g.symbol for g in entry.middleware] and entry.middleware_complete
+def test_filter_added_to_middleware(extended):
+    entry = extended[("DELETE", "/api/v1/admin/members/{id}")]
+    assert "SessionMemberFilter" in [g.symbol for g in entry.middleware] and entry.middleware_complete
 
 
-@needs_canonical
-def test_dispatcher_matcher_not_first_match(canonical):
-    assert "permitAll" not in canonical[("GET", "/api/v1/me/profile")].effective_guards
+def test_dispatcher_matcher_not_first_match(extended):
+    assert extended[("GET", "/api/v1/me/profile")].effective_guards == ["authenticated"]
 
 
 def test_first_matching_rule_wins(tmp_path):
@@ -126,7 +129,9 @@ def test_url_rule_with_constant_is_incomplete(tmp_path):
 
 
 def test_method_security_disabled_is_inferred(tmp_path):
-    annotation = '@GetMapping("/a")\n    @org.springframework.security.access.prepost.PreAuthorize("hasRole(\'ADMIN\')")'
+    annotation = (
+        '@GetMapping("/a")\n    @org.springframework.security.access.prepost.PreAuthorize("hasRole(\'ADMIN\')")'
+    )
     entry = extract(app(tmp_path, annotation)).entrypoints[0]
     assert "hasRole('ADMIN')" not in entry.effective_guards
     assert entry.certainty == Certainty.inferred and entry.unresolved_reason == "METHOD_SECURITY_DISABLED"
@@ -141,8 +146,10 @@ def test_method_security_enabled_counts(tmp_path):
 
 def test_class_level_method_security_is_inherited(tmp_path):
     (tmp_path / "pom.xml").write_text(POM)
-    (tmp_path / "C.java").write_text('@EnableMethodSecurity @RestController @PreAuthorize("hasRole(\'X\')")\n'
-                                     'class C { @GetMapping("/a") void h() {} }\n')
+    (tmp_path / "C.java").write_text(
+        "@EnableMethodSecurity @RestController @PreAuthorize(\"hasRole('X')\")\n"
+        'class C { @GetMapping("/a") void h() {} }\n'
+    )
     assert extract(tmp_path).entrypoints[0].effective_guards == ["hasRole('X')"]
 
 
@@ -240,17 +247,22 @@ def test_multiple_filter_chains_are_incomplete(tmp_path):
     assert not extract(app(tmp_path, extra=chain)).entrypoints[0].middleware_complete
 
 
-@pytest.mark.parametrize(("switch", "annotation", "counted"), [
-    ("@EnableMethodSecurity", '@Secured("ROLE_ADMIN")', False),
-    ("@EnableMethodSecurity(securedEnabled = true)", '@Secured("ROLE_ADMIN")', True),
-    ("@EnableMethodSecurity", '@RolesAllowed("ADMIN")', False),
-    ("@EnableMethodSecurity(jsr250Enabled = true)", '@RolesAllowed("ADMIN")', True),
-    ("@EnableGlobalMethodSecurity", "@PreAuthorize(\"hasRole('ADMIN')\")", False),
-    ("@EnableGlobalMethodSecurity(prePostEnabled = true)", "@PreAuthorize(\"hasRole('ADMIN')\")", True),
-    ("@EnableMethodSecurity(prePostEnabled = false)", "@PreAuthorize(\"hasRole('ADMIN')\")", False),
-])
+@pytest.mark.parametrize(
+    ("switch", "annotation", "counted"),
+    [
+        ("@EnableMethodSecurity", '@Secured("ROLE_ADMIN")', False),
+        ("@EnableMethodSecurity(securedEnabled = true)", '@Secured("ROLE_ADMIN")', True),
+        ("@EnableMethodSecurity", '@RolesAllowed("ADMIN")', False),
+        ("@EnableMethodSecurity(jsr250Enabled = true)", '@RolesAllowed("ADMIN")', True),
+        ("@EnableGlobalMethodSecurity", "@PreAuthorize(\"hasRole('ADMIN')\")", False),
+        ("@EnableGlobalMethodSecurity(prePostEnabled = true)", "@PreAuthorize(\"hasRole('ADMIN')\")", True),
+        ("@EnableMethodSecurity(prePostEnabled = false)", "@PreAuthorize(\"hasRole('ADMIN')\")", False),
+    ],
+)
 def test_method_security_options(tmp_path, switch, annotation, counted):
-    entry = extract(app(tmp_path, f'@GetMapping("/a")\n    {annotation}', extra=f"{switch}\nclass Security {{}}\n")).entrypoints[0]
+    entry = extract(
+        app(tmp_path, f'@GetMapping("/a")\n    {annotation}', extra=f"{switch}\nclass Security {{}}\n")
+    ).entrypoints[0]
     assert bool(entry.effective_guards) == counted
     if not counted:
         assert entry.unresolved_reason == "METHOD_SECURITY_DISABLED"
@@ -258,7 +270,9 @@ def test_method_security_options(tmp_path, switch, annotation, counted):
 
 def test_gradle_security_dependency_without_rules_is_incomplete(tmp_path):
     (tmp_path / "C.java").write_text(CONTROLLER.format(prefix='"/p"', annotation='@GetMapping("/a")'))
-    (tmp_path / "build.gradle").write_text("dependencies { implementation 'org.springframework.boot:spring-boot-starter-security' }\n")
+    (tmp_path / "build.gradle").write_text(
+        "dependencies { implementation 'org.springframework.boot:spring-boot-starter-security' }\n"
+    )
     assert not extract(tmp_path).entrypoints[0].middleware_complete
 
 
@@ -275,6 +289,8 @@ def test_legacy_security_adapter_rules_are_read(tmp_path):
 
 def test_aspect_guard_marks_incomplete(tmp_path):
     app(tmp_path)
-    (tmp_path / "Guard.java").write_text("@Aspect\n@Component\nclass Guard { @Before(\"execution(* x.*(..))\") void check() {} }\n")
+    (tmp_path / "Guard.java").write_text(
+        '@Aspect\n@Component\nclass Guard { @Before("execution(* x.*(..))") void check() {} }\n'
+    )
     entry = extract(tmp_path).entrypoints[0]
     assert not entry.middleware_complete and "Aspect" in entry.unresolved_reason

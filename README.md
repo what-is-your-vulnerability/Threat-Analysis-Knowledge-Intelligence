@@ -1,68 +1,51 @@
-# 보안 진단 Agent
+<div align="center">
+  <img src="./assets/taki-logo.svg" alt="TAKI 로고" width="140" />
+  <h1>TAKI 진단 엔진</h1>
+  <p><strong>스캔은 끝났는데, 권한 검사는 어디에 있나요?</strong></p>
+</div>
 
-설계문서와 소스코드를 받아 보안 통제가 코드에 구현됐는지 근거와 함께 판정하고, 수정 방법을 제안한다. SKALA Final Project 65번이다.
+TAKI(Threat Analysis & Knowledge Intelligence)는 CLI로 직접 실행할 수 있는 정적 진단 엔진이다. 설계서의 보안 요구사항을 코드의 호출 흐름과 대조하며, 설계서 없이 코드만 검사할 수도 있다. 정적 분석 도구의 경고를 참고하고, 통제가 구현됐는지 근거와 함께 판정해 수정 방향을 제안한다. 코드는 직접 고치지 않는다.
 
-프로그램이 범위 확인, 진입점과 가드 추출, 기능 묶음, 조사 항목, 근거 확인, 판정을 맡는다. LLM은 조사 항목 하나 안에서 문제를 찾고 설명한다. AI 근거만으로는 배포를 막지 않고, 확인하지 못한 항목을 "안전"으로 표시하지 않는다.
+## 빠른 시작
 
-## 설치
+Python 3.12와 `uv`가 필요하다. 스캐너를 켜면 Docker도 필요하다.
 
 ```bash
 uv sync
-cp agent.example.yml agent.yml   # 모델을 정해 적는다. agent.yml은 커밋하지 않는다.
-export OPENAI_API_KEY=...        # api.openai.com으로만 보낸다. 다른 주소의 키는 LLM_API_KEY로 넘긴다.
+scripts/demo.sh --fake
 ```
 
-모델 기본값은 없다. 역할(`onboard`, `investigate`, `review`, `fix`)마다 모델을 적지 않으면 그 역할은 호출하지 않고 실패한다. 2026-11-10 기준 사용 모델은 `gpt-6.1-terra`이고, 이 모델은 도구와 추론 강도를 함께 받지 않아 `tool_reasoning_effort: none`을 쓴다.
-
-## 실행
+모의 LLM 데모는 규칙 도출 → 승인 → 검사 → 재검사까지 실행한다. 실제 모델을 쓰려면 `taki.example.yml`을 `taki.yml`로 복사해 역할별 모델을 지정하고, API 키를 환경변수 또는 `.env`에 설정한다. 설정 파일과 키는 커밋하지 않는다.
 
 ```bash
-scripts/demo.sh --fake        # 모의 LLM으로 대표 데모(규칙 도출 → 승인 → 검사 → 재검사)
-scripts/demo.sh               # agent.yml의 모델로 같은 데모
-
-uv run secagent rules derive TARGET --design 설계.md --out rules.yml
-uv run secagent rules approve rules.yml --id R1        # 또는 --all
-uv run secagent scan TARGET --design 설계.md --rules rules.yml --out runs/a
-uv run secagent recheck TARGET --previous runs/a --design 설계.md --rules rules.yml --out runs/b
+uv run taki scan TARGET --out runs/code-only
+uv run taki scan TARGET --design design.md --out runs/with-design
+uv run taki recheck TARGET --previous runs/with-design --design design.md --out runs/recheck
 ```
 
-종료 코드: 0 통과, 1 경고, 2 차단, 3 실행 실패. 결과는 `--out` 폴더의 `report.html`, `report.json`, `results.sarif`, `ledger.json`이다.
-
-로컬 API와 worker:
+설계서에서 규칙 후보를 만들면 검토 후 승인해야 검사에 반영된다.
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d --wait   # PostgreSQL만 127.0.0.1:55432
-uv run secagent db-upgrade
-uv run secagent api            # 127.0.0.1:8000, 인증 없음. Host가 127.0.0.1·localhost인 요청만 받고 상태 변경은 JSON 본문만 받는다
-uv run secagent worker
-uv run secagent openapi > deploy/openapi.json
+uv run taki rules derive TARGET --design design.md --out rules.yml
+uv run taki rules approve rules.yml --id R1
+uv run taki scan TARGET --design design.md --rules rules.yml --out runs/with-rules
 ```
 
-Semgrep은 `agent.yml`의 `semgrep.enabled: true`로 켠다. Docker에서 네트워크 없이 돈다.
+## 결과
 
-## 시험
+`--out` 폴더에 `report.html`, `report.json`, `results.sarif`, `ledger.json`을 만든다. 판정은 **구현 확인 / 누락 의심 / 검증 불충분**으로 구분하며, 확인하지 못한 항목을 안전하다고 표시하지 않는다.
+
+CLI 종료 코드는 0(통과), 1(경고), 2(차단), 3(실행 실패)이다. 같은 판정은 `report.json`의 `exit_code`에도 남는다. AI 추정만으로 차단하지 않는다.
+
+## 검증과 현재 범위
 
 ```bash
-uv run ruff check . && uv run pytest          # 모의 LLM, 컨테이너 없이
-uv run pytest -m docker                       # Semgrep 실제 컨테이너
-uv run pytest -m postgres                     # docker compose로 띄운 PostgreSQL 필요
+uv run ruff check .
+uv run pytest
 ```
 
-## 평가
+진입점 자동 추출은 현재 Java Spring 중심이다. 다른 언어는 부분적인 폴더 묶음이나 `--slices` 입력을 사용한다. 위험도 점수·배포 확률·기준 문서 RAG는 아직 제공하지 않는다. 이전 `eval/reports/` 수치는 현재 DEV 성능을 뜻하지 않으며, 현재 DEV 결과도 사람 검토 전에는 잠정값이다.
 
-```bash
-uv run python eval/run.py --condition C --variant DEV-D0 --repeat 3 --experiment bc
-uv run python eval/score.py bc C
-uv run python eval/derive_dev_rules.py --config agent.yml   # 조건 D·E용 규칙
-```
+LangSmith 추적을 켜면 프롬프트와 응답이 외부에 저장된다. 비공개 평가 자료를 검사할 때는 추적을 끈다.
 
-정답은 `eval/score.py`가 기존 채점기로만 읽는다. 칸별 결과 파일에는 정답 라벨이 들어 있어 커밋하지 않는다. 수치는 `eval/reports/README.md`에 있고 모두 잠정이다.
-
-## 알려진 한계
-
-- 진입점 자동 추출은 Java Spring만 된다. 다른 언어는 폴더 단위 묶음(partial)이나 손으로 쓴 묶음 파일(`--slices`)을 쓴다.
-- 재검토는 1번이라 차단은 나오지 않는다(차단은 도구 확인 + 재검토 3번 유지일 때만).
-- 위험도 점수, 배포 확률, 기준 문서 RAG, PR 연동, 의존성 점검(OSV), 탐지 규칙 생성은 아직 없다.
-- 범위 밖 유형(SSRF 등)은 스캐너 규칙이 있을 때만 결과가 나오고, 없으면 리포트의 못 본 범위에 나온다.
-- `rules/templates.yml`의 ASVS 항목은 도구 저장소의 JSON에서 옮겼고 ASVS 원문과 대조하지 않았다.
-- DEV 수치는 공개 codefix 기반 데이터라 성능 주장에 쓰지 않는다.
+엔진은 위 CLI만으로 실행할 수 있다. 검사 대기열과 로컬 HTTP API가 필요하면 [TAKI 서버](https://github.com/what-is-your-vulnerability/taki-server)를 사용한다.

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">TAKI</title>
+  <desc id="description">TAKI wordmark with Threat Analysis and Knowledge Intelligence</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1426"/>
+      <stop offset="1" stop-color="#101d32"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#57e7d2"/>
+      <stop offset="1" stop-color="#91b9ff"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#38506a" stroke-width="1" opacity=".18"/>
+    </pattern>
+  </defs>
+
+  <rect width="512" height="512" rx="88" fill="url(#background)"/>
+  <rect width="512" height="512" rx="88" fill="url(#grid)"/>
+  <path d="M54 86V54h32m340 372h32v-32" fill="none" stroke="#5daeb0" stroke-width="3" opacity=".65"/>
+
+  <circle cx="148" cy="139" r="5" fill="#57e7d2"/>
+  <path d="M165 139h199" fill="none" stroke="#5daeb0" stroke-width="2" opacity=".75"/>
+  <text x="256" y="177" fill="#9beedf" font-family="Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="3" text-anchor="middle">THREAT ANALYSIS &amp;</text>
+
+  <text x="256" y="316" fill="#f1f7ff" font-family="Arial, sans-serif" font-size="174" font-weight="800" letter-spacing="-8" text-anchor="middle">TAKI</text>
+  <rect x="179" y="339" width="154" height="6" rx="3" fill="url(#accent)"/>
+
+  <text x="256" y="392" fill="#b7cee4" font-family="Arial, sans-serif" font-size="23" font-weight="600" letter-spacing="2.3" text-anchor="middle">KNOWLEDGE INTELLIGENCE</text>
+</svg>

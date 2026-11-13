@@ -1,0 +1,21 @@
+{"version": "2.1.0", "runs": [{
+  "tool": {
+    "driver": {"name": "CodeQL", "semanticVersion": "2.27.4", "rules": []},
+    "extensions": [{"name": "codeql/java-queries", "semanticVersion": "1.4.0", "rules": [
+      {"id": "java/sql-injection", "properties": {"tags": ["security", "external/cwe/cwe-089", "external/cwe/cwe-564"]}},
+      {"id": "java/path-injection", "properties": {"tags": ["security", "external/cwe/cwe-022"]}}
+    ]}]
+  },
+  "invocations": [{"executionSuccessful": true, "toolExecutionNotifications": []}],
+  "results": [
+    {"ruleId": "java/sql-injection", "rule": {"id": "java/sql-injection", "index": 0, "toolComponent": {"index": 0}},
+     "message": {"text": "This query depends on a user-provided value."},
+     "locations": [{"physicalLocation": {"artifactLocation": {"uri": "src/main/java/demo/UserDao.java", "uriBaseId": "%SRCROOT%"},
+       "region": {"startLine": 20, "startColumn": 9}}}],
+     "codeFlows": [{"threadFlows": [{"locations": [
+       {"location": {"physicalLocation": {"artifactLocation": {"uri": "src/main/java/demo/UserController.java", "uriBaseId": "%SRCROOT%"}, "region": {"startLine": 12}}}},
+       {"location": {"physicalLocation": {"artifactLocation": {"uri": "src/main/java/demo/UserService.java", "uriBaseId": "%SRCROOT%"}, "region": {"startLine": 30}}}},
+       {"location": {"physicalLocation": {"artifactLocation": {"uri": "src/main/java/demo/UserDao.java", "uriBaseId": "%SRCROOT%"}, "region": {"startLine": 20}}}}
+     ]}]}]}
+  ]
+}]}

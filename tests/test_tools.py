@@ -4,29 +4,32 @@ from pathlib import Path
 import pytest
 from conftest import make_config
 
-from agent.adapters.lang.java_index import build_index
-from agent.adapters.lang.mybatis import parse_mappers
-from agent.adapters.lang.spring import extract_spring
-from agent.core.orchestrator import run_scan
-from agent.llm.gateway import BudgetExceeded, LlmGateway
-from agent.llm.roles import investigate, review
-from agent.schemas.models import Budget, Case, CaseSource, Claim, EvidencePath, ReviewResult
-from agent.steps.cases import load_rules
-from agent.steps.scope import scan_scope
-from agent.tools.readonly import ReadOnlyTools
+from taki.adapters.lang.java_index import build_index
+from taki.adapters.lang.mybatis import parse_mappers
+from taki.adapters.lang.spring import extract_spring
+from taki.core.orchestrator import run_scan
+from taki.llm.gateway import LlmGateway
+from taki.llm.roles import investigate, review
+from taki.schemas.models import Budget, Case, CaseSource, Claim, EvidencePath, ReviewResult
+from taki.steps.cases import load_rules
+from taki.steps.scope import scan_scope
+from taki.tools.readonly import ReadOnlyTools
 
 FIX = Path(__file__).parent / "fixtures" / "spring-members"
 VULN = FIX / "vulnerable"
 CONTROLLER = "src/main/java/demo/member/MemberController.java"
-CASE = Case(case_id="c1", source=CaseSource.rule, subject_id="R1", question="q", slice_id="s", budget=Budget(max_tool_calls=8))
+CASE = Case(
+    case_id="c1", source=CaseSource.rule, subject_id="R1", question="q", slice_id="s", budget=Budget(max_tool_calls=8)
+)
 
 
 @pytest.fixture(scope="module")
 def tools():
     snapshot = scan_scope(VULN)
     index = build_index(snapshot)
-    return ReadOnlyTools(snapshot, index, parse_mappers(snapshot), extract_spring(snapshot, index).entrypoints,
-                         [FIX / "design.md"])
+    return ReadOnlyTools(
+        snapshot, index, parse_mappers(snapshot), extract_spring(snapshot, index).entrypoints, [FIX / "design.md"]
+    )
 
 
 @pytest.fixture
@@ -94,11 +97,29 @@ def test_bad_submit_is_sent_back(fake, gw, tools):
     assert fake.requests[1]["messages"][-1]["content"].startswith("오류")
 
 
-def test_loop_limit_becomes_budget_exceeded(fake, gw, tools):
-    fake.responses += [_tool("search", pattern="x") for _ in range(20)]
-    with pytest.raises(BudgetExceeded):
-        investigate(CASE, "code", gateway=gw, tools=tools)
-    assert len(fake.requests) == CASE.budget.max_tool_calls + 1
+def test_limit_asks_final_answer_with_readings(fake, gw, tools):
+    limit = CASE.budget.max_tool_calls
+    final = {"claims": [{"claim": "absent", "statement": "읽은 내용으로 판정"}]}
+    fake.responses += [_tool("search", pattern="delete") for _ in range(limit + 1)] + [{"content": json.dumps(final)}]
+    result = investigate(CASE, "code", gateway=gw, tools=tools)
+    last = fake.requests[-1]
+    assert len(fake.requests) == limit + 2 and "tools" not in last
+    assert "<<<DATA TOOL_RESULTS>>>" in json.dumps(last, ensure_ascii=False)
+    assert result.claims[0].statement == "읽은 내용으로 판정"
+
+
+def test_bad_submit_counts_toward_limit(fake, gw, tools):
+    limit = CASE.budget.max_tool_calls
+    bad = _tool("submit_result", claims=[{"claim": "모름"}])
+    fake.responses += [bad for _ in range(limit + 1)] + [{"content": '{"claims": []}'}]
+    assert investigate(CASE, "code", gateway=gw, tools=tools).claims == []
+    assert len(fake.requests) == limit + 2 and "tools" not in fake.requests[-1]
+
+
+def test_high_tool_limit_does_not_hit_recursion_limit(fake, gw, tools):
+    case = CASE.model_copy(update={"budget": Budget(max_tool_calls=30)})
+    fake.responses += [_tool("search", pattern="x") for _ in range(30)] + [_tool("submit_result", claims=[])]
+    assert investigate(case, "code", gateway=gw, tools=tools).claims == [] and len(fake.requests) == 31
 
 
 def test_path_traversal_returns_error_text(tools):
@@ -137,8 +158,10 @@ def test_tool_calls_recorded(fake, gw, tools, tmp_path):
 def test_review_can_read_upper_guard(fake, gw, tools):
     evidence = EvidencePath(claim=Claim.absent, statement="s")
     proof = {"claim": "implemented", "statement": "상위에 있다"}
-    fake.responses += [_tool("read_code", path="src/main/java/demo/config/SecurityConfig.java", start=1, end=20),
-                       _tool("submit_result", result="refuted", reason="r", evidence=proof)]
+    fake.responses += [
+        _tool("read_code", path="src/main/java/demo/config/SecurityConfig.java", start=1, end=20),
+        _tool("submit_result", result="refuted", reason="r", evidence=proof),
+    ]
     out = review(evidence, "code", gateway=gw, tools=tools)
     assert out.result == ReviewResult.refuted and out.evidence.claim == Claim.implemented
     assert "SecurityFilterChain" in fake.requests[1]["messages"][-1]["content"]
@@ -146,16 +169,20 @@ def test_review_can_read_upper_guard(fake, gw, tools):
 
 def test_scan_gives_tools_to_investigator(fake, tmp_path):
     fake.responses.extend(json.loads((FIX / "fake_script.json").read_text(encoding="utf-8")))
-    run_scan(VULN, design=[FIX / "design.md"], out=tmp_path, config=make_config(fake), rules=load_rules(FIX / "rules.yml"))
+    run_scan(
+        VULN, design=[FIX / "design.md"], out=tmp_path, config=make_config(fake), rules=load_rules(FIX / "rules.yml")
+    )
     assert "tools" in fake.requests[0] and "tools" not in fake.requests[-1]  # 수정 제안은 도구를 쓰지 않는다
 
 
 def test_tool_reasoning_split_keeps_reasoning_for_final_answer(fake, tmp_path, tools):
     config = make_config(fake, reasoning_effort="medium", tool_reasoning_effort="none")
     gateway = LlmGateway(config, tmp_path)
-    fake.responses += [_tool("read_code", path=CONTROLLER, start=35, end=35),
-                       _tool("submit_result", claims=[]),
-                       {"content": json.dumps({"claims": [{"claim": "absent", "statement": "최종"}]})}]
+    fake.responses += [
+        _tool("read_code", path=CONTROLLER, start=35, end=35),
+        _tool("submit_result", claims=[]),
+        {"content": json.dumps({"claims": [{"claim": "absent", "statement": "최종"}]})},
+    ]
     result = investigate(CASE, "code", gateway=gateway, tools=tools)
     first, second, final = fake.requests
     assert first["reasoning_effort"] == "none" and "tools" in first and second["reasoning_effort"] == "none"
@@ -172,12 +199,14 @@ def test_without_split_first_submit_is_final(fake, gw, tools):
 
 
 def test_config_secret_is_masked_in_tools_and_slices(tmp_path):
-    from agent.schemas.models import Slice, SliceFile
-    from agent.steps.slices import render_slice
+    from taki.schemas.models import Slice, SliceFile
+    from taki.steps.slices import render_slice
 
     (tmp_path / "application.properties").write_text("spring.datasource.password=tiger123\n")
     snapshot = scan_scope(tmp_path)
-    assert "tiger123" not in ReadOnlyTools(snapshot).call("read_code", {"path": "application.properties", "start": 1, "end": 1})
+    assert "tiger123" not in ReadOnlyTools(snapshot).call(
+        "read_code", {"path": "application.properties", "start": 1, "end": 1}
+    )
     assert "tiger123" not in ReadOnlyTools(snapshot).call("search", {"pattern": "datasource"})
     one = Slice(slice_id="s", name="s", files=[SliceFile(path="application.properties")])
     assert "tiger123" not in render_slice(one, snapshot)

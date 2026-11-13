@@ -1,6 +1,6 @@
 [project]
-name = "security-diagnosis-agent"
-version = "0.1.0"
+name = "taki"
+version = "0.2.0"
 description = "설계문서와 코드를 받아 보안 통제 누락을 근거와 함께 알려 주는 진단 Agent"
 requires-python = ">=3.12"
 dependencies = [
@@ -10,35 +10,76 @@ dependencies = [
   "jinja2",
   "tree-sitter",
   "tree-sitter-java",
-  "fastapi>=0.162.2",
-  "uvicorn>=0.54.0",
-  "sqlalchemy>=2.1.8",
-  "alembic>=1.20.1",
-  "psycopg[binary]>=3.3.8",
+  "langsmith>=0.14.17",
+  "langgraph==1.2.17",
 ]
 
 [project.scripts]
-secagent = "agent.cli.main:main"
+taki = "taki.cli.main:main"
 
 [dependency-groups]
-dev = ["pytest", "ruff"]
+dev = [
+    "mypy>=2.4.1",
+    "pre-commit>=4.7.0",
+    "pytest",
+    "ruff",
+]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agent"]
+packages = ["src/taki"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-# 컨테이너와 DB가 필요한 시험은 -m docker, -m postgres로 따로 돌린다.
-addopts = "-m 'not docker and not postgres'"
+# 컨테이너가 필요한 시험은 -m docker, -m codeql로 따로 돌린다.
+addopts = "-m 'not docker and not codeql'"
+# langsmith 패키지가 자기 내부 모듈을 불러올 때 내는 경고다. 우리 코드와 무관하다.
+filterwarnings = ["ignore:langsmith.wrappers._openai_agents is deprecated:DeprecationWarning"]
 markers = [
   "docker: 실제 컨테이너가 필요한 시험",
-  "postgres: 로컬 PostgreSQL이 필요한 시험",
+  "codeql: 로컬에서 빌드한 CodeQL 이미지가 필요한 시험",
 ]
 
 [tool.ruff]
 line-length = 120
+extend-exclude = ["tests/fixtures", "eval/runs"]
+# pre-commit은 파일 이름을 직접 넘긴다. 이 설정이 없으면 extend-exclude가 무시된다.
+force-exclude = true
+
+[tool.ruff.lint]
+# 기본(E4·E7·E9·F)에 추가. 괄호는 대응하는 flake8 플러그인
+extend-select = [
+  "E", "W",   # pycodestyle
+  "B",        # flake8-bugbear
+  "S",        # flake8-bandit
+  "I",        # isort
+  "C4",       # flake8-comprehensions
+  "SIM",      # flake8-simplify
+  "PT",       # flake8-pytest-style
+  "N",        # pep8-naming
+  "PIE",      # flake8-pie
+  "RET",      # flake8-return
+  "BLE",      # flake8-blind-except
+  "DTZ",      # flake8-datetimez
+  "PTH",      # flake8-use-pathlib
+  "C90",      # mccabe
+  "RUF",      # Ruff 자체 규칙
+]
+# PT018: assert 하나에 조건 여러 개를 쓰지 말라는 스타일 규칙. 기존 시험 211곳에 걸리고 버그를 잡지 않는다.
+# N818: 예외 이름(SecretLeft 등)이 공개 API라 바꾸지 않는다.
+ignore = ["PT018", "N818"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]   # 시험 코드의 assert는 정상
+
+[tool.mypy]
+# 커밋마다 같은 결과가 나오도록 바뀐 파일이 아니라 src 전체를 본다.
+files = ["src"]
+ignore_missing_imports = true

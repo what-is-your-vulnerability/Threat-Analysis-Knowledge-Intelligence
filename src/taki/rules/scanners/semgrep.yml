@@ -1,0 +1,6 @@
+# Semgrep. 규칙 경로는 이 파일이 있는 폴더 기준이다.
+name: semgrep
+image: semgrep/semgrep:1.183.0
+command: [semgrep, scan, --metrics=off, --disable-version-check, --sarif, --output, "{sarif}", "{rules}", .]
+rules: [../semgrep/*.yml]
+timeout_seconds: 600

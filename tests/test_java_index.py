@@ -2,12 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from agent.adapters.lang.java_index import build_index
-from agent.schemas.models import Certainty
-from agent.steps.scope import scan_scope
+from taki.adapters.lang.java_index import build_index
+from taki.schemas.models import Certainty
+from taki.steps.scope import scan_scope
 
 FIX = Path(__file__).parent / "fixtures" / "java_calls"
-CANONICAL = Path(__file__).resolve().parents[2] / "benchmarks" / "canonical-bss" / "impl" / "java"
 
 
 @pytest.fixture(scope="module")
@@ -94,9 +93,13 @@ def test_unknown_receiver_falls_back_to_name(index):
 
 
 def test_field_usages_cross_java_and_xml(tmp_path):
-    (tmp_path / "A.java").write_text("class A {\n  private long accountId;\n  long getAccountId() { return accountId; }\n}\n")
-    (tmp_path / "m.xml").write_text("<mapper namespace='x'>\n<select id='a'>\nSELECT * FROM T WHERE ACCOUNT_ID = #{accountId}\n"
-                                    "</select>\n</mapper>\n")
+    (tmp_path / "A.java").write_text(
+        "class A {\n  private long accountId;\n  long getAccountId() { return accountId; }\n}\n"
+    )
+    (tmp_path / "m.xml").write_text(
+        "<mapper namespace='x'>\n<select id='a'>\nSELECT * FROM T WHERE ACCOUNT_ID = #{accountId}\n"
+        "</select>\n</mapper>\n"
+    )
     usages = build_index(scan_scope(tmp_path)).field_usages("accountId")
     assert {(u.file, u.line) for u in usages} == {("A.java", 2), ("A.java", 3), ("m.xml", 3)}
 
@@ -109,10 +112,9 @@ def test_shared_state_finds_static_cache(index):
     assert not any(symbol in ("Cache.LIMIT", "Cache.accountMapper") for _, symbol in found)
 
 
-@pytest.mark.skipif(not CANONICAL.exists(), reason="정본 없음")
-def test_canonical_has_no_unresolved_in_member_delete():
-    index = build_index(scan_scope(CANONICAL))
-    assert index.method("MemberAdminService.delete") is not None
-    assert index.unresolved_calls("MemberAdminService.delete") == []
+def test_app_has_no_unresolved_calls(extended_app):
+    index = build_index(scan_scope(extended_app))
+    assert index.method("MemberService.delete") is not None
+    assert index.unresolved_calls("MemberService.delete") == []
     everywhere = {s: u for s in index.symbols() if (u := index.unresolved_calls(s))}
     assert everywhere == {}

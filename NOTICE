@@ -1,4 +1,4 @@
-이 저장소의 rules/templates.yml은 OWASP Application Security Verification Standard 5.0.0의
+이 저장소의 src/taki/rules/templates.yml은 OWASP Application Security Verification Standard 5.0.0의
 항목 ID와 설명을 그대로 옮기고 탐지 범위 번호를 덧붙였습니다.
 
 원본: https://github.com/OWASP/ASVS/tree/v5.0.0

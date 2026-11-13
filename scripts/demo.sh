@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 대표 데모: 규칙 도출 → 승인 → 취약 예제 검사 → 고친 예제 재검사.
-# --fake: 모의 LLM으로 돌린다(비용 없음). 없으면 agent.yml의 모델을 쓴다.
+# --fake: 모의 LLM으로 돌린다(비용 없음). 없으면 taki.yml의 모델을 쓴다.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -21,25 +21,26 @@ if [ "${1:-}" = "--fake" ]; then
   esac
   export LLM_BASE_URL="$URL"
   unset OPENAI_API_KEY LLM_API_KEY
+  export TAKI_LANGSMITH_PROJECT=  # 모의 실행은 LangSmith로 보내지 않는다(.env보다 먼저 정해 둔다)
   CONFIG=(--config tests/fake.yml)
 fi
 
 COMMON=(--design "$FIX/design.md" --rules "$WORK/rules.yml")
 
 echo "== 1. 설계문서에서 보안 규칙 후보 도출"
-uv run secagent rules derive "$FIX/vulnerable" --design "$FIX/design.md" --out "$WORK/rules.yml" ${CONFIG[@]+"${CONFIG[@]}"} || exit 3
+uv run taki rules derive "$FIX/vulnerable" --design "$FIX/design.md" --out "$WORK/rules.yml" ${CONFIG[@]+"${CONFIG[@]}"} || exit 3
 
 echo "== 2. 규칙 승인 (실제 사용에서는 담당자가 검토 후 승인)"
-uv run secagent rules approve "$WORK/rules.yml" --all || exit 3
+uv run taki rules approve "$WORK/rules.yml" --all || exit 3
 
 echo "== 3. 취약 예제 검사: 삭제 API에 관리자 확인이 빠져 있다"
-uv run secagent scan "$FIX/vulnerable" --out "$WORK/before" "${COMMON[@]}" ${CONFIG[@]+"${CONFIG[@]}"}
+uv run taki scan "$FIX/vulnerable" --out "$WORK/before" "${COMMON[@]}" ${CONFIG[@]+"${CONFIG[@]}"}
 BEFORE=$?
 echo "종료 코드 $BEFORE (1이면 경고)"
 [ "$BEFORE" -eq 1 ] || { echo "기대와 다름: 취약 예제는 종료 코드 1이어야 함" >&2; exit 1; }
 
 echo "== 4. 고친 예제 재검사"
-uv run secagent recheck "$FIX/fixed" --previous "$WORK/before" --out "$WORK/after" "${COMMON[@]}" ${CONFIG[@]+"${CONFIG[@]}"} | tee "$WORK/after.log"
+uv run taki recheck "$FIX/fixed" --previous "$WORK/before" --out "$WORK/after" "${COMMON[@]}" ${CONFIG[@]+"${CONFIG[@]}"} | tee "$WORK/after.log"
 AFTER=${PIPESTATUS[0]}
 echo "종료 코드 $AFTER (0이면 통과)"
 python3 - "$WORK/before/manifest.jsonl" "$WORK/after/manifest.jsonl" <<'PY'

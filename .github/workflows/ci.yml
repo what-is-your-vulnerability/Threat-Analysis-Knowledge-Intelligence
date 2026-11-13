@@ -1,0 +1,32 @@
+# 엔진(taki)용. dev·main으로 가는 PR과 dev push에서 .pre-commit-config.yaml 검사를 돌린다
+# (ruff check, ruff format --check, mypy, pytest). 로컬 훅과 CI가 같은 목록을 쓴다.
+# 모의 LLM으로 도는 시험만 실행하므로 비밀값이 필요 없다. docker·codeql 시험은 제외된다(pyproject.toml).
+name: ci
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # 액션은 태그가 아니라 커밋 SHA로 고정한다(태그는 옮겨질 수 있다).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: uv run pre-commit run --all-files --show-diff-on-failure
