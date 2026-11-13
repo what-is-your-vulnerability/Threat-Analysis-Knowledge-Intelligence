@@ -8,10 +8,33 @@ languages: [java]
 # 컨테이너는 Docker VM 메모리(8GiB 기기에서 약 7.75GiB)보다 낮게, --ram(MB)은 컨테이너보다 2GiB 낮게 둔다.
 memory: 6g
 timeout_seconds: 1800
+# Java의 --build-mode=none은 pom.xml에 적힌 의존 라이브러리(jar)를 Maven Central에서 직접 받는다.
+# 네트워크가 막혀 있으면 받지 못해 라이브러리 타입을 해석하지 못하고, 오류 없이 경고 0건으로 끝난다.
+# 그래서 DB 생성(prepare)만 Maven Central로 나갈 수 있게 한다. 준비 단계 컨테이너는 밖으로 직접 나가지 못하는 내부
+# 네트워크에 있고, 허용 호스트만 통과시키는 프록시(deploy/scanners/egress-proxy)를 CODEQL_PROXY_* 환경 변수로 쓴다.
+# 분석(command)은 계속 네트워크가 없다. Maven은 필요 없다.
+prepare:
+  - codeql
+  - database
+  - create
+  - "{work}/db"
+  - --language=java
+  - --build-mode=none
+  - --source-root={src}
+  - --threads=4
+  - --ram=4096
+prepare_allow_hosts: [repo.maven.apache.org]
+prepare_env:
+  CODEQL_PROXY_HOST: "{proxy_host}"
+  CODEQL_PROXY_PORT: "{proxy_port}"
+  CODEQL_PROXY_URLS: '[{"type":"maven_repository","url":"https://repo.maven.apache.org/maven2"}]'
 command:
-  - sh
-  - -c
-  - >-
-    codeql database create /work/db --language=java --build-mode=none --source-root=/src --threads=4 --ram=4096
-    && codeql database analyze /work/db codeql/java-queries:codeql-suites/java-security-extended.qls
-    --format=sarif-latest --threads=4 --ram=4096 --output={sarif}
+  - codeql
+  - database
+  - analyze
+  - "{work}/db"
+  - codeql/java-queries:codeql-suites/java-security-extended.qls
+  - --format=sarif-latest
+  - --threads=4
+  - --ram=4096
+  - --output={sarif}
